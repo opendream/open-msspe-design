@@ -1,6 +1,6 @@
 # Open-MSSPE-Design
 
-Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic Sequencing with Spiked Primer Enrichment (MSSPE). This approach supports viral diagnostics and genomic surveillance by enriching viral sequences during sequencing, as described in Deng et al. (2020). The implementation introduces significant revisions to optimize and automate the design process.
+Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic Sequencing with Spiked Primer Enrichment (MSSPE). This approach supports viral diagnostics and genomic surveillance by enriching viral sequences during sequencing, as described in Deng et al. (2020), and openly implemented in [nf-msspe](https://github.com/MaestSi/nf-msspe). This implementation introduces significant revisions to optimize and automate the primer design process.
 
 ---
 
@@ -11,7 +11,7 @@ MSSPE combines metagenomic sequencing with targeted primer enrichment to enhance
 Key features:
 - Fully automated primer design workflow.
 - Rust implementation for performance and reliability.
-- Designed for viral diagnostics and genomic surveillance.
+- Enhanced filtering for di-nucleotide repeats, homopolymers, and potential secondary structures via deltaG calculations.
 
 Reference:  
 Deng, X., Achari, A., Federman, S. et al. *Metagenomic sequencing with spiked primer enrichment for viral diagnostics and genomic surveillance*. *Nat Microbiol* **5**, 443–454 (2020).  

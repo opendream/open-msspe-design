@@ -677,7 +677,7 @@ fn main() -> io::Result<()> {
                 && kmer_stat.gc_percent <= 60.0
         })
         .collect();
-    log::debug!("Done filtering out unmatched");
+    log::debug!("Done filtering out unmatched, primers left = {}", candidate_primers.len());
 
     // 5. Output the primers
     log::debug!("Outputting primers...");

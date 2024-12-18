@@ -201,15 +201,16 @@ fn make_kmer_segments_mapping(segments: &HashMap<usize, Segment>) -> KmerSegment
     let mut kmer_segments_mapping: KmerSegmentMapping = HashMap::new();
     for (i, segment) in segments.iter() {
         for (kmer, freq) in segment.kmers.iter() {
-            let entry = KmerRecord {
+            let rec = KmerRecord {
                 word: kmer.word.clone(),
                 direction: kmer.direction,
                 seq_id: kmer.seq_id,
             };
             kmer_segments_mapping
-                .entry(entry.word)
+                .entry(rec.word.clone())
                 .or_insert(HashMap::new())
                 .insert(*i, *freq as u32);
+            log::debug!("kmer={}, freq={}, segment={}", rec.word.clone(), freq, i);
         }
     }
     kmer_segments_mapping
@@ -219,7 +220,7 @@ fn find_most_freq_kmer<'a>(
     segments: &'a HashMap<usize, Segment>,
     kmer_segments_mapping: &'a KmerSegmentMapping,
     skipped_segment_indexes: HashSet<usize>,
-) -> (KmerFrequency, HashSet<usize>) {
+) -> Option<(KmerFrequency, HashSet<usize>)> {
     let mut kmer_total_counts: HashMap<&KmerRecord, usize> = HashMap::new();
     let mut candidate_kmers: HashMap<usize, KmerFrequency> = HashMap::new();
     for (_, segment) in segments.iter() {
@@ -251,6 +252,12 @@ fn find_most_freq_kmer<'a>(
             },
         );
     }
+
+    if candidate_kmers.len() == 0 {
+        log::debug!("No candidate k-mers found");
+        return None;
+    }
+
     let (_, winner) = candidate_kmers
         .iter()
         .max_by(|(_, a), (_, b)| {
@@ -262,22 +269,24 @@ fn find_most_freq_kmer<'a>(
 
     let winner_kmer_segments = kmer_segments_mapping.get(&winner.kmer.word.clone());
     let matched_segment_indexes: Vec<usize> = winner_kmer_segments.unwrap().keys().map(|k| *k).collect();
-    let matched_segment_indexes_rev: Vec<usize> = kmer_segments_mapping
-        .get(&reverse_complement(&winner.kmer.word.clone()))
-        .unwrap()
-        .keys()
-        .map(|k| *k)
-        .collect();
 
     let mut skipped_segment_indexes: HashSet<usize> = HashSet::new();
     for idx in matched_segment_indexes {
         skipped_segment_indexes.insert(idx);
     }
-    for idx in matched_segment_indexes_rev {
-        skipped_segment_indexes.insert(idx);
+    let winner_kmer_segments_rev = kmer_segments_mapping.get(&reverse_complement(&winner.kmer.word.clone()));
+    if winner_kmer_segments_rev.is_some() {
+        let matched_segment_indexes_rev: Vec<usize> = winner_kmer_segments_rev
+            .unwrap()
+            .keys()
+            .map(|k| *k)
+            .collect();
+        for idx in matched_segment_indexes_rev {
+            skipped_segment_indexes.insert(idx);
+        }
     }
 
-    (
+    Some((
         KmerFrequency {
             kmer: KmerRecord {
                 word: winner.kmer.word.clone(),
@@ -287,7 +296,7 @@ fn find_most_freq_kmer<'a>(
             frequency: winner.frequency,
         },
         skipped_segment_indexes,
-    )
+    ))
 }
 
 mod tests {
@@ -295,19 +304,57 @@ mod tests {
 
     #[test]
     fn test_find_most_freq_kmer() {
-        let mut segments: HashMap<usize, Segment> = HashMap::new();
-        let mut kmer_segments_mapping: KmerSegmentMapping = HashMap::new();
+        let segments: HashMap<usize, Segment> = {
+            let mut segments: HashMap<usize, Segment> = HashMap::new();
+
+            let mut kmers = HashMap::new();
+            kmers.insert(KmerRecord { word: "ACTG".to_string(), direction: SEQ_DIR_FWD, seq_id: 0 }, 1);
+            kmers.insert(KmerRecord { word: "AGGT".to_string(), direction: SEQ_DIR_FWD, seq_id: 0 }, 1);
+            kmers.insert(KmerRecord { word: "ATTA".to_string(), direction: SEQ_DIR_FWD, seq_id: 1 }, 2);
+            segments.insert(0, Segment {
+                index: 0,
+                kmers,
+            });
+
+            kmers = HashMap::new();
+            kmers.insert(KmerRecord { word: "GCAT".to_string(), direction: SEQ_DIR_FWD, seq_id: 0 }, 1);
+            kmers.insert(KmerRecord { word: "AGGT".to_string(), direction: SEQ_DIR_FWD, seq_id: 0 }, 2);
+            kmers.insert(KmerRecord { word: "GGAA".to_string(), direction: SEQ_DIR_FWD, seq_id: 1 }, 1);
+            segments.insert(1, Segment {
+                index: 1,
+                kmers,
+            });
+
+            kmers = HashMap::new();
+            kmers.insert(KmerRecord { word: "GGGG".to_string(), direction: SEQ_DIR_FWD, seq_id: 0 }, 1);
+            kmers.insert(KmerRecord { word: "ATGA".to_string(), direction: SEQ_DIR_FWD, seq_id: 0 }, 2);
+            kmers.insert(KmerRecord { word: "TTTT".to_string(), direction: SEQ_DIR_FWD, seq_id: 1 }, 1);
+            segments.insert(2, Segment {
+                index: 2,
+                kmers,
+            });
+
+            segments
+        };
+        let kmer_segments_mapping: KmerSegmentMapping = make_kmer_segments_mapping(&segments);
         let mut skipped_segment_indexes: HashSet<usize> = HashSet::new();
 
-        let segment = Segment {
-            index: 0,
-            kmers: HashMap::new(),
-        };
-        segments.insert(0, segment);
+        let result = find_most_freq_kmer(&segments, &kmer_segments_mapping, skipped_segment_indexes.clone());
+        assert_eq!(result.is_some(), true);
+        let (kmer, skipped) = result.unwrap();
+        assert_eq!(kmer.kmer.word, "AGGT");
+        assert_eq!(kmer.frequency, 2);
+        assert_eq!(skipped.len(), 2);
 
-        let (kmer, skipped) = find_most_freq_kmer(&segments, &kmer_segments_mapping, skipped_segment_indexes);
-        assert_eq!(kmer.frequency, 0);
-        assert_eq!(skipped.len(), 0);
+        for idx in skipped.iter() {
+            skipped_segment_indexes.insert(*idx);
+        }
+        let result = find_most_freq_kmer(&segments, &kmer_segments_mapping, skipped_segment_indexes.clone());
+        assert_eq!(result.is_some(), true);
+        let (kmer, skipped) = result.unwrap();
+        assert_eq!(kmer.kmer.word, "ATGA");
+        assert_eq!(kmer.frequency, 2);
+        assert_eq!(skipped.len(), 1);
     }
 }
 
@@ -323,11 +370,15 @@ fn get_candidates_kmers<'a>(
     let min_remaining_sequences = total_sequences - MAX_MISMATCH_SEQUENCES;
 
     for iter_no in 0..MAX_ITERATIONS {
-        let (iter_winner, new_skipped_indexes) = find_most_freq_kmer(
+        let result = find_most_freq_kmer(
             &segments,
             &kmer_segment_mappings,
             skipped_segment_indexes.clone()
         );
+        if result.is_none() {
+            break;
+        }
+        let (iter_winner, new_skipped_indexes) = result.unwrap();
         log::debug!("Iteration={}, winner: {}, freq={}, skips={}", iter_no, iter_winner.kmer.word, iter_winner.frequency, new_skipped_indexes.len());
         for idx in new_skipped_indexes.iter() {
             skipped_segment_indexes.insert(*idx);

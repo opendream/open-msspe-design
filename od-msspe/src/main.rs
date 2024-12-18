@@ -15,7 +15,7 @@ const MAX_ITERATIONS: usize = 100;
 const SEARCH_WINDOWS_SIZE: usize = 50;
 
 const MV_CONC: f64 = 50.0; // Monovalent cation concentration (mM)
-const DV_CONC: f64 = 0.0; // Divalent cation concentration (mM)
+const DV_CONC: f64 = 1.5; // Divalent cation concentration (mM)
 const DNTP_CONC: f64 = 0.8; // dNTP concentration (mM)
 const DNA_CONC: f64 = 50.0; // Primer concentration (nM)
 const ANNEALING_TEMP: f64 = 45.0; // Annealing temperature (°C)
@@ -167,7 +167,7 @@ fn get_segments(records: &Vec<SequenceRecord>, ovlp_windows_size: usize, kmer_si
     for (seq_id, rec) in records.iter().enumerate() {
         // 1. Partitioning the sequence into segments
         let partitions = partitioning_sequence(&rec.sequence, ovlp_windows_size);
-        log::debug!("seq_id={}, partitions={}, first_part_len={}", seq_id, partitions.len(), partitions[0].len());
+        log::trace!("seq_id={}, partitions={}, first_part_len={}", seq_id, partitions.len(), partitions[0].len());
         // 2. Extracting forward k-mers from each segment
         for (idx, partition) in partitions.iter().enumerate() {
             // Find the segment at idx, if not exists, create a new one
@@ -310,6 +310,7 @@ fn find_most_freq_kmer<'a>(
     ))
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -504,11 +505,11 @@ fn get_candidates_kmers(segments: &HashMap<usize, Segment>) -> Vec<KmerFrequency
             skipped_segment_indexes.clone()
         );
         if result.is_none() {
-            log::debug!("Iteration={}, No candidate k-mers found", iter_no);
+            log::trace!("Iteration={}, No candidate k-mers found", iter_no);
             break;
         }
         let (iter_winner, new_skipped_indexes) = result.unwrap();
-        log::debug!("Iteration={}, winner: {}, freq={}, skips={}", iter_no, iter_winner.kmer.word, iter_winner.frequency, new_skipped_indexes.len());
+        log::trace!("Iteration={}, winner: {}, freq={}, skips={}", iter_no, iter_winner.kmer.word, iter_winner.frequency, new_skipped_indexes.len());
         for idx in new_skipped_indexes.iter() {
             skipped_segment_indexes.insert(*idx);
         }
@@ -539,7 +540,14 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
         .map(|kmer_freq| {
             let freq = kmer_freq.frequency;
             let tm = get_tm(kmer_freq.kmer.word.clone());
-            let delta_g = 0.0;
+            let delta_g = delta_g::calculate_delta_g(
+                &kmer_freq.kmer.word.clone(),
+                &kmer_freq.kmer.word.clone(),
+                MV_CONC,
+                DV_CONC,
+                DNTP_CONC,
+                DNA_CONC,
+            ).unwrap_or_else(|| 0.0);
             KmerStat {
                 word: kmer_freq.kmer.word.clone(),
                 direction: kmer_freq.kmer.direction,
@@ -549,7 +557,7 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
                 tm_ok: in_tm_threshold(kmer_freq.kmer.word.clone(), tm_threshold),
                 repeats: is_repeats(kmer_freq.kmer.word.clone()),
                 runs: is_run(kmer_freq.kmer.word.clone()),
-                delta_g,
+                delta_g: delta_g as f32,
                 hairpin: delta_g < -9.0,
             }
         })
@@ -670,7 +678,7 @@ fn main() -> io::Result<()> {
     let candidate_primers: Vec<&KmerStat> = kmer_stats
         .iter()
         .filter(|kmer_stat| {
-            kmer_stat.tm_ok
+            (kmer_stat.tm_ok || !kmer_stat.hairpin)
                 && !kmer_stat.repeats
                 && !kmer_stat.runs
                 && kmer_stat.gc_percent >= 40.0

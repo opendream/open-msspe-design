@@ -665,6 +665,7 @@ dependencies = [
  "itertools",
  "log",
  "ngrams",
+ "regex",
  "seq_io",
  "std-dev",
 ]

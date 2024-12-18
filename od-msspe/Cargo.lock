@@ -661,6 +661,7 @@ version = "0.1.0"
 dependencies = [
  "bio",
  "env_logger",
+ "itertools",
  "log",
  "ngrams",
  "seq_io",

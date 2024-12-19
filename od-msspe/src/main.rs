@@ -67,6 +67,9 @@ struct KmerStat {
     word: String,
     direction: u8,
     gc_percent: f32,
+    mean: f32,
+    std: f32,
+    tm: f32,
     tm_ok: bool,
     repeats: bool,
     runs: bool,
@@ -516,7 +519,7 @@ fn find_candidates_kmers<'a>(segment_manager: &'a mut SegmentManager) -> Option<
 fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
     // first, finding the threshold for Tm
     let primers: Vec<String> = kmer_records.iter().map(|k| k.kmer.word.clone()).collect();
-    let tm_threshold = get_tm_threshold(primers);
+    let (mean, std, tm_threshold) = get_tm_threshold(primers);
 
     kmer_records
         .iter()
@@ -535,6 +538,9 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
                 word: kmer_freq.kmer.word.clone(),
                 direction: kmer_freq.kmer.direction,
                 gc_percent: get_gc_percent(kmer_freq.kmer.word.clone()),
+                mean,
+                std,
+                tm,
                 tm_ok: in_tm_threshold(kmer_freq.kmer.word.clone(), tm_threshold),
                 repeats: is_repeats(kmer_freq.kmer.word.clone()),
                 runs: is_run(kmer_freq.kmer.word.clone()),
@@ -573,14 +579,18 @@ fn get_tm(kmer: String) -> f32 {
  *
  * Calculated by find (2*sd(Tm)) + mean(Tm) of the primers
  */
-fn get_tm_threshold(primers: Vec<String>) -> f32 {
+fn get_tm_threshold(primers: Vec<String>) -> (f32, f32, f32) {
     let mut tm_values: Vec<f32> = Vec::new();
     for primer in primers {
         tm_values.push(get_tm(primer));
     }
     let mean_tm = tm_values.iter().sum::<f32>() / tm_values.len() as f32;
     let sd_tm = standard_deviation(&tm_values);
-    (2.0 * sd_tm.standard_deviation) + mean_tm
+    (
+        mean_tm,
+        sd_tm.standard_deviation,
+        (2.0 * sd_tm.standard_deviation) + mean_tm,
+    )
 }
 
 fn in_tm_threshold(kmer: String, threshold: f32) -> bool {
@@ -624,7 +634,7 @@ fn is_run(kmer: String) -> bool {
 fn main() -> io::Result<()> {
     env_logger::init();
 
-    let filename = String::from("zika_unaligned_dna.fasta");
+    let filename = String::from("zika.fasta");
 
     // 1. Align sequences
     log::info!("Aligning sequences...");
@@ -682,19 +692,20 @@ fn main() -> io::Result<()> {
     log::info!("Outputting primers...");
     let output_file = "output/primers.csv";
     let mut writer = csv::Writer::from_path(output_file)?;
-    writer.write_record(&["name", "sequence", "species_name", "tax_id"])?;
+    writer.write_record(&["direction", "primers", "gc", "avg", "std", "tm"])?;
     for (idx, primer) in candidate_primers.iter().enumerate() {
-        let name_suffix = if primer.direction == SEQ_DIR_FWD {
+        let direction = if primer.direction == SEQ_DIR_FWD {
             "F"
         } else {
             "R"
         };
         writer.write_record(&[
-            format!("primer_{}_{}", idx, name_suffix),
-            primer.word.clone(),
-            // hard code for now.
-            "Some virus".to_string(),
-            "12345".to_string(),
+            direction,
+            &*primer.word,
+            &format!("{:.2}", primer.gc_percent / 100.0),
+            &format!("{:.2}", primer.mean),
+            &format!("{:.2}", primer.std),
+            &format!("{:.2}", primer.tm),
         ])?;
     }
     writer.flush().expect("Error writing output to file");

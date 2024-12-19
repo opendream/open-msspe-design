@@ -4,14 +4,15 @@ use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Write};
 use itertools::Itertools;
 use std_dev::standard_deviation;
 
 const KMER_SIZE: usize = 13;
-const OVLP_WINDOWS_SIZE: usize = 250;
+const WINDOW_SIZE: usize = 500;
+const OVERLAP_SIZE: usize = 250;
 const MAX_MISMATCH_SEGMENTS: usize = 0;
-const MAX_ITERATIONS: usize = 100;
+const MAX_ITERATIONS: usize = 1000;
 const SEARCH_WINDOWS_SIZE: usize = 50;
 
 const MV_CONC: f64 = 50.0; // Monovalent cation concentration (mM)
@@ -43,20 +44,20 @@ impl PartialEq for KmerRecord {
 impl Eq for KmerRecord {}
 
 #[derive(Clone)]
-struct KmerFrequency {
-    kmer: KmerRecord,
+struct KmerFrequency<'a> {
+    kmer: &'a KmerRecord,
     frequency: usize,
 }
 
-impl PartialEq for KmerFrequency {
+impl PartialEq for KmerFrequency<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.kmer.word == other.kmer.word
     }
 }
 
-impl Eq for KmerFrequency {}
+impl Eq for KmerFrequency<'_> {}
 
-impl Hash for KmerFrequency {
+impl Hash for KmerFrequency<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.kmer.word.hash(state);
     }
@@ -65,28 +66,38 @@ impl Hash for KmerFrequency {
 struct KmerStat {
     word: String,
     direction: u8,
-    frequency: usize,
     gc_percent: f32,
-    tm: f32,
     tm_ok: bool,
     repeats: bool,
     runs: bool,
     delta_g: f32,
-    hairpin: bool,
 }
 
-struct Segment {
-    index: u16,
-    kmers: HashMap<KmerRecord, usize>,
+struct Segment<'a> {
+    sequence: &'a SequenceRecord,
+    partition_no: u16,
+    index: usize,
+    kmers: [Vec<KmerRecord>; 2],
 }
 
-type KmerSegmentMapping = HashMap<String, HashMap<usize, u32>>;
-
-struct FindingCandidateKmersContext<'a> {
-    segments: &'a HashMap<usize, Segment>,
-    skipped_segment_indexes: &'a mut HashSet<usize>,
-    kmer_segments_mapping: &'a KmerSegmentMapping,
+struct SegmentManager<'a>{
+    segments: Vec<Segment<'a>>,
 }
+
+impl Hash for Segment<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.sequence.name.hash(state);
+        self.partition_no.hash(state);
+    }
+}
+
+impl PartialEq for Segment<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.sequence.name == other.sequence.name && self.partition_no == other.partition_no
+    }
+}
+
+impl Eq for Segment<'_> {}
 
 fn to_records(src: Vec<u8>) -> io::Result<Vec<SequenceRecord>> {
     let mut reader = Reader::new(BufReader::new(src.as_slice()));
@@ -109,7 +120,7 @@ fn to_records(src: Vec<u8>) -> io::Result<Vec<SequenceRecord>> {
  */
 fn align_sequences(filepath: String) -> Result<Vec<u8>, io::Error> {
     let output = std::process::Command::new("mafft")
-        .args(["--auto", "--quiet", "--thread", "-1", &filepath.clone()])
+        .args(["--auto", "--quiet", "--thread", "-1", "--ep", "0.123", &filepath.clone()])
         .output()
         .expect("failed to execute MAFFT");
 
@@ -141,12 +152,12 @@ fn find_kmers(sequence: &str, kmer_size: usize) -> Vec<String> {
         .collect()
 }
 
-fn partitioning_sequence(sequence: &str, ovlp_windows_size: usize) -> Vec<String> {
+fn partitioning_sequence(sequence: &str, size: usize, overlap_size: usize) -> Vec<String> {
     sequence
         .chars()
         .collect::<Vec<char>>()
-        .windows(ovlp_windows_size * 2)
-        .step_by(ovlp_windows_size)
+        .windows(size)
+        .step_by(overlap_size)
         .map(|window| window.iter().collect())
         .collect()
 }
@@ -157,157 +168,88 @@ fn get_sequence_on_search_windows(sequence: &String, search_windows_size: usize)
     (first.to_string(), second.to_string())
 }
 
-fn get_segments(records: &Vec<SequenceRecord>, ovlp_windows_size: usize, kmer_size: usize, search_windows_size: usize) -> HashMap<usize, Segment> {
-    let mut segments: HashMap<usize, Segment> = HashMap::new();
+struct PartitioningOption {
+    segment_size: usize,
+    overlap_size: usize,
+    window_size: usize,
+    kmer_size: usize,
+}
 
-    if ovlp_windows_size < search_windows_size {
+fn get_segment_manager(records: &Vec<SequenceRecord>, opt: PartitioningOption) -> SegmentManager {
+    let mut manager = SegmentManager {
+        segments: Vec::new(),
+    };
+
+    if opt.overlap_size < opt.window_size {
         panic!("Overlap windows size must be greater or equal than search windows size");
     }
 
-    for (seq_id, rec) in records.iter().enumerate() {
-        // 1. Partitioning the sequence into segments
-        let partitions = partitioning_sequence(&rec.sequence, ovlp_windows_size);
-        log::trace!("seq_id={}, partitions={}, first_part_len={}", seq_id, partitions.len(), partitions[0].len());
-        // 2. Extracting forward k-mers from each segment
-        for (idx, partition) in partitions.iter().enumerate() {
-            // Find the segment at idx, if not exists, create a new one
-            let segment = segments.entry(idx).or_insert(Segment {
-                index: idx as u16,
-                kmers: HashMap::new(),
+    for (_, record) in records.iter().enumerate() {
+        let partitions = partitioning_sequence(&record.sequence, opt.segment_size, opt.overlap_size);
+        for (j, partition) in partitions.iter().enumerate() {
+            let (start, end) = get_sequence_on_search_windows(&partition, opt.window_size);
+            let start_kmers = find_kmers(&start, opt.kmer_size);
+            let end_kmers = find_kmers(&end, opt.kmer_size);
+            let mut kmers: [Vec<KmerRecord>; 2] = [Vec::new(), Vec::new()];
+            for kmer in start_kmers.iter() {
+                kmers[0].push(KmerRecord { word: kmer.clone(), direction: SEQ_DIR_FWD });
+            }
+            for kmer in end_kmers.iter() {
+                kmers[1].push(KmerRecord { word: reverse_complement(kmer), direction: SEQ_DIR_REV });
+            }
+            manager.segments.push(Segment {
+                sequence: record,
+                partition_no: j as u16,
+                index: manager.segments.len(),
+                kmers,
             });
-            // Push the k-mers into the list
-            let (fwd_windows, rev_windows) = get_sequence_on_search_windows(&partition, search_windows_size);
-            let fwd_kmers: Vec<KmerRecord> = find_kmers(&*fwd_windows, kmer_size)
-                .iter()
-                .map(|kmer| KmerRecord {
-                    word: kmer.to_string(),
-                    direction: SEQ_DIR_FWD,
-                })
-                .collect();
-            let rev_kmers: Vec<KmerRecord> = find_kmers(&*reverse_complement(&rev_windows), kmer_size)
-                .iter()
-                .map(|kmer| KmerRecord {
-                    word: kmer.to_string(),
-                    direction: SEQ_DIR_REV,
-                })
-                .collect();
-
-            for kmer in fwd_kmers.iter() {
-                segment
-                    .kmers
-                    .entry(kmer.clone())
-                    .and_modify(|e| *e += 1)
-                    .or_insert(1);
-            }
-            for kmer in rev_kmers.iter() {
-                segment
-                    .kmers
-                    .entry(kmer.clone())
-                    .and_modify(|e| *e += 1)
-                    .or_insert(1);
-            }
         }
     }
 
-    segments
+    manager
 }
 
-fn make_kmer_segments_mapping(segments: &HashMap<usize, Segment>) -> KmerSegmentMapping {
-    let mut kmer_segments_mapping: KmerSegmentMapping = HashMap::new();
-    for (i, segment) in segments.iter() {
-        for (kmer, freq) in segment.kmers.iter() {
-            let rec = KmerRecord {
-                word: kmer.word.clone(),
-                direction: kmer.direction,
-            };
-            kmer_segments_mapping
-                .entry(rec.word.clone())
-                .or_insert(HashMap::new())
-                .insert(*i, *freq as u32);
-            log::trace!("kmer={}, freq={}, segment={}", rec.word.clone(), freq, i);
+fn get_segment_window_key(s: usize, w: usize) -> u32 {
+    (s * 10000000 + w) as u32
+}
+
+fn make_kmer_segments_windows_mapping<'a>(segments: &'a Vec<Segment<'a>>) -> HashMap<&'a KmerRecord, Vec<u32>> {
+    let mut kmer_segments_mapping: HashMap<&'a KmerRecord, Vec<u32>> = HashMap::new();
+    for segment in segments.iter() {
+        for (window, kmers) in segment.kmers.iter().enumerate() {
+            for kmer in kmers.iter() {
+                kmer_segments_mapping
+                    .entry(kmer)
+                    .or_insert(Vec::new())
+                    .push(get_segment_window_key(segment.index, window));
+            }
         }
     }
     kmer_segments_mapping
 }
 
-fn find_most_freq_kmer<'a>(
-    segments: &'a HashMap<usize, Segment>,
-    kmer_segments_mapping: &'a KmerSegmentMapping,
-    skipped_segment_indexes: HashSet<usize>,
-) -> Option<(KmerFrequency, HashSet<usize>)> {
-    let mut kmer_total_counts: HashMap<&KmerRecord, usize> = HashMap::new();
-    let mut candidate_kmers: HashMap<usize, KmerFrequency> = HashMap::new();
-    for (_, segment) in segments.iter() {
-        if skipped_segment_indexes.contains(&(segment.index as usize)) {
-            continue;
-        }
+fn find_most_freq_kmer<'a>(segments: &'a Vec<Segment>, ignored_segments_windows: HashSet<u32>) -> Option<KmerFrequency<'a>> {
+    let mut kmer_freq_map: HashMap<&KmerRecord, usize> = HashMap::new();
 
-        let mut kmer_map: HashMap<String, &KmerRecord> = HashMap::new();
-        let mut kmer_counts: HashMap<String, usize> = HashMap::new();
-        for (kmer_record, counts) in segment.kmers.iter() {
-            kmer_map.entry(kmer_record.word.clone()).or_insert(kmer_record);
-            kmer_counts.entry(kmer_record.word.clone()).and_modify(|e| *e += counts).or_insert(*counts);
-            kmer_total_counts
-                .entry(kmer_record)
-                .and_modify(|e| *e += counts)
-                .or_insert(*counts);
+    let mut iter_count = 0;
+    for (idx, segment) in segments.iter().enumerate() {
+        for (window, kmers) in segment.kmers.iter().enumerate() {
+            if ignored_segments_windows.contains(&get_segment_window_key(idx, window)) {
+                continue;
+            }
+            for kmer in kmers.iter() {
+                iter_count += 1;
+                kmer_freq_map.entry(kmer)
+                    .and_modify(|f| *f += 1)
+                    .or_insert(1);
+            }
         }
-        let (word, freq) = kmer_counts.into_iter().max_by(|(_, a), (_, b)| a.cmp(b)).unwrap();
-        let winner_kmer = kmer_map.get(&word).unwrap();
-        candidate_kmers.insert(
-            segment.index as usize,
-            KmerFrequency {
-                kmer: KmerRecord {
-                    word: word.clone(),
-                    direction: winner_kmer.direction,
-                },
-                frequency: freq,
-            },
-        );
     }
 
-    if candidate_kmers.len() == 0 {
-        return None;
-    }
-
-    let (_, winner) = candidate_kmers
+    kmer_freq_map
         .iter()
-        .max_by(|(_, a), (_, b)| {
-            let a_freq = kmer_total_counts.get(&a.kmer).unwrap();
-            let b_freq = kmer_total_counts.get(&b.kmer).unwrap();
-            a_freq.cmp(b_freq)
-        })
-        .unwrap();
-
-    let winner_kmer_segments = kmer_segments_mapping.get(&winner.kmer.word.clone());
-    let matched_segment_indexes: Vec<usize> = winner_kmer_segments.unwrap().keys().map(|k| *k).collect();
-
-    let mut skipped_segment_indexes: HashSet<usize> = HashSet::new();
-    for idx in matched_segment_indexes {
-        skipped_segment_indexes.insert(idx);
-    }
-    let winner_kmer_segments_rev = kmer_segments_mapping.get(&reverse_complement(&winner.kmer.word.clone()));
-    if winner_kmer_segments_rev.is_some() {
-        let matched_segment_indexes_rev: Vec<usize> = winner_kmer_segments_rev
-            .unwrap()
-            .keys()
-            .map(|k| *k)
-            .collect();
-        for idx in matched_segment_indexes_rev {
-            skipped_segment_indexes.insert(idx);
-        }
-    }
-
-    Some((
-        KmerFrequency {
-            kmer: KmerRecord {
-                word: winner.kmer.word.clone(),
-                direction: winner.kmer.direction,
-            },
-            frequency: winner.frequency,
-        },
-        skipped_segment_indexes,
-    ))
+        .max_by_key(|(_, &v)| v)
+        .map(|(k, &f)| KmerFrequency { kmer: *k, frequency: f })
 }
 
 #[cfg(test)]
@@ -369,7 +311,7 @@ mod tests {
         ];
         for rec in records.iter() {
             println!("seq={} ---", rec.name);
-            for p in partitioning_sequence(&rec.sequence, 5) {
+            for p in partitioning_sequence(&rec.sequence, 10, 5) {
                 println!("-- partition={}", p);
                 let (i, j) = get_sequence_on_search_windows(&p, 5);
                 println!("---- search_windows(start)={}", i);
@@ -378,24 +320,28 @@ mod tests {
                 println!("---- search_windows(end/rev)={}", rev);
             }
         }
-        let segments = get_segments(&records, 5, 3, 5);
-        assert_eq!(segments.len(), 2);
-        let first_segment = segments.get(&0).unwrap();
-        for (kmer, freq) in first_segment.kmers.iter() {
-            println!("kmer={}, direction={}, freq={}", kmer.word, kmer.direction, freq);
+        let opt = PartitioningOption {
+            segment_size: 10,
+            overlap_size: 5,
+            window_size: 5,
+            kmer_size: 3,
+        };
+        let manager = get_segment_manager(&records, opt);
+        assert_eq!(manager.segments.len(), 6);
+        let first_segment = manager.segments.get(0).unwrap();
+        for kmer in first_segment.kmers.iter() {
+            for k in kmer.iter() {
+                println!("kmer={}", k.word);
+            }
         }
-        assert_eq!(segments.get(&0).unwrap().kmers.len(), 6);
-        let aac_kmer = KmerRecord { word: "AAC".to_string(), direction: 0 };
-        let ttc_kmer = KmerRecord { word: "TTC".to_string(), direction: 1 };
-        assert_eq!(*first_segment.kmers.get(&aac_kmer).unwrap(), 2usize);
-        assert_eq!(*first_segment.kmers.get(&ttc_kmer).unwrap(), 3usize);
-        assert_eq!(segments.get(&1).unwrap().kmers.len(), 6);
+        assert_eq!(manager.segments.get(0).unwrap().kmers[0].len(), 3);
+        assert_eq!(manager.segments.get(1).unwrap().kmers[1].len(), 3);
     }
 
     #[test]
     fn test_partitioning_sequence() {
         let sequence = "AACCTTGGAACCTTGG";
-        let partitions = partitioning_sequence(sequence, 5);
+        let partitions = partitioning_sequence(sequence, 10, 5);
         assert_eq!(partitions.len(), 2);
         assert_eq!(partitions[0], "AACCTTGGAA");
         assert_eq!(partitions[1], "TGGAACCTTG");
@@ -403,131 +349,168 @@ mod tests {
 
     #[test]
     fn test_make_kmer_segments_mapping() {
-        let segments: HashMap<usize, Segment> = {
-            let mut segments: HashMap<usize, Segment> = HashMap::new();
-
-            let mut kmers = HashMap::new();
-            kmers.insert(KmerRecord { word: "ACTG".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "AGGT".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "ATTA".to_string(), direction: SEQ_DIR_FWD }, 2);
-            segments.insert(0, Segment {
-                index: 0,
-                kmers,
-            });
-
-            kmers = HashMap::new();
-            kmers.insert(KmerRecord { word: "GCAT".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "AGGT".to_string(), direction: SEQ_DIR_FWD }, 2);
-            kmers.insert(KmerRecord { word: "GGAA".to_string(), direction: SEQ_DIR_FWD }, 1);
-            segments.insert(1, Segment {
-                index: 1,
-                kmers,
-            });
-
-            segments
+        let seq_1 = &SequenceRecord {
+            name: "seq1".to_string(),
+            sequence: "ACTGAGGTATTA".to_string(),
         };
-        let kmer_segments_mapping = make_kmer_segments_mapping(&segments);
-        assert_eq!(kmer_segments_mapping.len(), 5);
-        assert_eq!(kmer_segments_mapping.get("ACTG").unwrap().len(), 1);
-        assert_eq!(kmer_segments_mapping.get("AGGT").unwrap().len(), 2);
-        assert_eq!(kmer_segments_mapping.get("ATTA").unwrap().len(), 1);
-        assert_eq!(kmer_segments_mapping.get("GCAT").unwrap().len(), 1);
-        assert_eq!(kmer_segments_mapping.get("GGAA").unwrap().len(), 1);
+        let seq_2 = SequenceRecord {
+            name: "seq2".to_string(),
+            sequence: "ACTGAGGTGGAA".to_string(),
+        };
+        let manager: SegmentManager = SegmentManager {
+            segments: vec![
+                Segment {
+                    sequence: &seq_1,
+                    partition_no: 0,
+                    index: 0,
+                    kmers: [
+                        vec![
+                            KmerRecord{word: "ACT".to_string(), direction: 0},
+                            KmerRecord{word: "CTG".to_string(), direction: 0},
+                            KmerRecord{word: "TGA".to_string(), direction: 0},
+                        ],
+                        vec![
+                            KmerRecord{word: "TAA".to_string(), direction: 1},
+                            KmerRecord{word: "AAT".to_string(), direction: 1},
+                            KmerRecord{word: "ATA".to_string(), direction: 1},
+                        ],
+                    ],
+                },
+                Segment {
+                    sequence: &seq_2,
+                    partition_no: 1,
+                    index: 1,
+                    kmers: [
+                        vec![
+                            KmerRecord{word: "ACT".to_string(), direction: 0},
+                            KmerRecord{word: "CTG".to_string(), direction: 0},
+                            KmerRecord{word: "TGA".to_string(), direction: 0},
+                        ],
+                        vec![
+                            KmerRecord{word: "TTC".to_string(), direction: 1},
+                            KmerRecord{word: "TCC".to_string(), direction: 1},
+                            KmerRecord{word: "CCA".to_string(), direction: 1},
+                        ],
+                    ],
+                },
+            ],
+        };
+
+        let kmer_segments_mapping = make_kmer_segments_windows_mapping(&manager.segments);
+        assert_eq!(kmer_segments_mapping.len(), 9);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "ACT".to_string(), direction: 0}).unwrap().len(), 2);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "CTG".to_string(), direction: 0}).unwrap().len(), 2);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "TGA".to_string(), direction: 0}).unwrap().len(), 2);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "TAA".to_string(), direction: 1}).unwrap().len(), 1);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "AAT".to_string(), direction: 1}).unwrap().len(), 1);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "ATA".to_string(), direction: 1}).unwrap().len(), 1);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "TTC".to_string(), direction: 1}).unwrap().len(), 1);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "TCC".to_string(), direction: 1}).unwrap().len(), 1);
+        assert_eq!(kmer_segments_mapping.get(&KmerRecord{word: "CCA".to_string(), direction: 1}).unwrap().len(), 1);
     }
 
     #[test]
     fn test_find_most_freq_kmer() {
-        let segments: HashMap<usize, Segment> = {
-            let mut segments: HashMap<usize, Segment> = HashMap::new();
-
-            let mut kmers = HashMap::new();
-            kmers.insert(KmerRecord { word: "ACTG".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "AGGT".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "ATTA".to_string(), direction: SEQ_DIR_FWD }, 2);
-            segments.insert(0, Segment {
-                index: 0,
-                kmers,
-            });
-
-            kmers = HashMap::new();
-            kmers.insert(KmerRecord { word: "GCAT".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "AGGT".to_string(), direction: SEQ_DIR_FWD }, 2);
-            kmers.insert(KmerRecord { word: "GGAA".to_string(), direction: SEQ_DIR_FWD }, 1);
-            segments.insert(1, Segment {
-                index: 1,
-                kmers,
-            });
-
-            kmers = HashMap::new();
-            kmers.insert(KmerRecord { word: "GGGG".to_string(), direction: SEQ_DIR_FWD }, 1);
-            kmers.insert(KmerRecord { word: "ATGA".to_string(), direction: SEQ_DIR_FWD }, 2);
-            kmers.insert(KmerRecord { word: "TTTT".to_string(), direction: SEQ_DIR_FWD }, 1);
-            segments.insert(2, Segment {
-                index: 2,
-                kmers,
-            });
-
-            segments
+        let seq_1 = SequenceRecord {
+            name: "seq1".to_string(),
+            sequence: "ACTGAGGTATTA".to_string(),
         };
-        let kmer_segments_mapping: KmerSegmentMapping = make_kmer_segments_mapping(&segments);
-        let mut skipped_segment_indexes: HashSet<usize> = HashSet::new();
+        let seq_2 = SequenceRecord {
+            name: "seq2".to_string(),
+            sequence: "ACAGGGGTGGAA".to_string(),
+        };
+        let manager: SegmentManager = SegmentManager {
+            segments: vec![
+                Segment {
+                    sequence: &seq_1,
+                    partition_no: 0,
+                    index: 0,
+                    kmers: [
+                        vec![
+                            KmerRecord{word: "ACT".to_string(), direction: 0},
+                            KmerRecord{word: "CTG".to_string(), direction: 0},
+                            KmerRecord{word: "TGA".to_string(), direction: 0},
+                        ],
+                        vec![
+                            KmerRecord{word: "TAA".to_string(), direction: 1},
+                            KmerRecord{word: "AAT".to_string(), direction: 1},
+                            KmerRecord{word: "ATA".to_string(), direction: 1},
+                        ],
+                    ],
+                },
+                Segment {
+                    sequence: &seq_2,
+                    partition_no: 1,
+                    index: 1,
+                    kmers: [
+                        vec![
+                            KmerRecord{word: "ACT".to_string(), direction: 0},
+                            KmerRecord{word: "CAG".to_string(), direction: 0},
+                            KmerRecord{word: "TGG".to_string(), direction: 0},
+                        ],
+                        vec![
+                            KmerRecord{word: "TTC".to_string(), direction: 1},
+                            KmerRecord{word: "TCC".to_string(), direction: 1},
+                            KmerRecord{word: "CCA".to_string(), direction: 1},
+                        ],
+                    ],
+                },
+            ],
+        };
 
-        let result = find_most_freq_kmer(&segments, &kmer_segments_mapping, skipped_segment_indexes.clone());
+        let result = find_most_freq_kmer(&manager.segments, HashSet::new());
         assert_eq!(result.is_some(), true);
-        let (kmer, skipped) = result.unwrap();
-        assert_eq!(kmer.kmer.word, "AGGT");
-        assert_eq!(kmer.frequency, 2);
-        assert_eq!(skipped.len(), 2);
-
-        for idx in skipped.iter() {
-            skipped_segment_indexes.insert(*idx);
-        }
-        let result = find_most_freq_kmer(&segments, &kmer_segments_mapping, skipped_segment_indexes.clone());
-        assert_eq!(result.is_some(), true);
-        let (kmer, skipped) = result.unwrap();
-        assert_eq!(kmer.kmer.word, "ATGA");
-        assert_eq!(kmer.frequency, 2);
-        assert_eq!(skipped.len(), 1);
+        let kmer_freq = result.unwrap();
+        assert_eq!(kmer_freq.kmer.word, "ACT");
+        assert_eq!(kmer_freq.frequency, 2);
     }
 }
 
-fn get_candidates_kmers(segments: &HashMap<usize, Segment>) -> Vec<KmerFrequency> {
-    let mut skipped_segment_indexes: HashSet<usize> = HashSet::new();
+fn find_candidates_kmers<'a>(segment_manager: &'a mut SegmentManager) -> Option<Vec<KmerFrequency<'a>>> {
     let mut candidate_kmers: Vec<KmerFrequency> = Vec::new();
-    let kmer_segment_mappings = make_kmer_segments_mapping(&segments);
-
-    let total_segments = segments.iter().len();
+    let kmer_segments_windows_mappings = make_kmer_segments_windows_mapping(&segment_manager.segments);
+    let mut ignored_segments_windows: HashSet<u32> = HashSet::new();
 
     for iter_no in 0..MAX_ITERATIONS {
-        let result = find_most_freq_kmer(
-            &segments,
-            &kmer_segment_mappings,
-            skipped_segment_indexes.clone()
-        );
-        if result.is_none() {
-            log::trace!("Iteration={}, No candidate k-mers found", iter_no);
-            break;
-        }
-        let (iter_winner, new_skipped_indexes) = result.unwrap();
-        log::trace!("Iteration={}, winner: {}, freq={}, skips={}", iter_no, iter_winner.kmer.word, iter_winner.frequency, new_skipped_indexes.len());
-        for idx in new_skipped_indexes.iter() {
-            skipped_segment_indexes.insert(*idx);
-        }
+        log::trace!("Iteration: {}", iter_no + 1);
+        let kmer_freq = match find_most_freq_kmer(&segment_manager.segments, ignored_segments_windows.clone()) {
+            Some(k) => {
+                if k.frequency == 1 {
+                    log::trace!("Iteration: {}, only 1 shared window found, stop ...", iter_no);
+                    break;
+                }
+                k
+            },
+            None => {
+                log::trace!("Iteration: {}, no k-mers found, stop ...", iter_no);
+                break;
+            },
+        };
+        candidate_kmers.push(kmer_freq.clone());
 
-        let remaining_segments = total_segments - skipped_segment_indexes.len();
-        if remaining_segments < MAX_MISMATCH_SEGMENTS {
+        // update ignored segments
+        let mut count = 0;
+        for idx in kmer_segments_windows_mappings.get(&kmer_freq.kmer).unwrap() {
+            count += 1;
+            ignored_segments_windows.insert(*idx);
+        }
+        log::debug!("Iteration: {}, winner: {}, windows removed: {}, total removed: {}",
+            iter_no, kmer_freq.kmer.word, count, ignored_segments_windows.len());
+
+        if kmer_freq.frequency < MAX_MISMATCH_SEGMENTS {
+            log::info!("Max mismatch segments reached, exiting...");
             break;
         }
-        candidate_kmers.push(iter_winner);
     }
 
-    candidate_kmers.iter().map(|k| KmerFrequency {
-        kmer: KmerRecord {
-            word: k.kmer.word.clone(),
-            direction: k.kmer.direction,
-        },
-        frequency: k.frequency,
-    }).collect()
+    if candidate_kmers.len() == 0 {
+        return None;
+    }
+
+    Some(candidate_kmers
+        .into_iter()
+        .map(|k| KmerFrequency { kmer: k.kmer, frequency: k.frequency })
+        .collect())
 }
 
 fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
@@ -551,14 +534,11 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
             KmerStat {
                 word: kmer_freq.kmer.word.clone(),
                 direction: kmer_freq.kmer.direction,
-                frequency: freq,
                 gc_percent: get_gc_percent(kmer_freq.kmer.word.clone()),
-                tm,
                 tm_ok: in_tm_threshold(kmer_freq.kmer.word.clone(), tm_threshold),
                 repeats: is_repeats(kmer_freq.kmer.word.clone()),
                 runs: is_run(kmer_freq.kmer.word.clone()),
                 delta_g: delta_g as f32,
-                hairpin: delta_g < -9.0,
             }
         })
         .collect()
@@ -604,7 +584,7 @@ fn get_tm_threshold(primers: Vec<String>) -> f32 {
 }
 
 fn in_tm_threshold(kmer: String, threshold: f32) -> bool {
-    get_tm(kmer) < threshold
+    get_tm(kmer) <= threshold
 }
 
 /**
@@ -644,51 +624,62 @@ fn is_run(kmer: String) -> bool {
 fn main() -> io::Result<()> {
     env_logger::init();
 
-    let filename = String::from("samples.fasta");
+    let filename = String::from("zika_unaligned_dna.fasta");
 
     // 1. Align sequences
-    log::debug!("Aligning sequences...");
+    log::info!("Aligning sequences...");
     let records = match align_sequences(filename) {
         Ok(records) => to_records(records)?,
         Err(e) => {
             panic!("Error aligning sequences: {}", e);
         }
     };
-    log::debug!("Done aligning sequences");
+    log::info!("Done aligning sequences");
     if records.iter().len() == 0 {
         panic!("No sequences found in the input file");
     }
 
     // 2. Extracting n-grams from each sequence segments
-    log::debug!("Extracting n-grams from each sequence segments...");
-    let segments = get_segments(&records, OVLP_WINDOWS_SIZE, KMER_SIZE, SEARCH_WINDOWS_SIZE);
-    log::debug!("Done, Total segments: {}", segments.len());
+    log::info!("Extracting n-grams from each sequence segments...");
+    let options = PartitioningOption {
+        segment_size: WINDOW_SIZE,
+        overlap_size: OVERLAP_SIZE,
+        window_size: SEARCH_WINDOWS_SIZE,
+        kmer_size: KMER_SIZE,
+    };
+    let mut segment_manager = get_segment_manager(&records, options);
+    let total_partitions = segment_manager.segments.iter().max_by_key(|s| s.partition_no).unwrap().partition_no;
+    log::info!("Done, total partitions: {}, total segments: {}", total_partitions, segment_manager.segments.len());
 
     // 3. Calculate frequencies of n-grams for each segment both forward/reverse
-    log::debug!("Calculating frequencies of k-mer for all segments...");
-    let candidate_kmers = get_candidates_kmers(&segments);
-    log::debug!(
-        "Done calculating, Total k-mers left: {}",
-        candidate_kmers.len()
-    );
+    log::info!("Calculating frequencies of k-mer for all segments...");
+    log::debug!("Total segments: {}", segment_manager.segments.len());
+    let candidate_kmers = match find_candidates_kmers(&mut segment_manager) {
+        Some(c) => c,
+        None => {
+            panic!("No candidate k-mers found");
+        }
+    };
+    log::info!("Done calculating, Total candidate k-mers: {}", candidate_kmers.len());
 
     // 4. Filtering out unmatched criteria
-    log::debug!("Filtering out unmatched criteria (Tm and >5nt repeats, runs...)");
+    log::info!("Filtering out unmatched criteria (Tm and >5nt repeats, runs...)");
     let kmer_stats = get_kmer_stats(candidate_kmers);
     let candidate_primers: Vec<&KmerStat> = kmer_stats
         .iter()
         .filter(|kmer_stat| {
-            (kmer_stat.tm_ok || !kmer_stat.hairpin)
-                && !kmer_stat.repeats
+                kmer_stat.tm_ok
+                && kmer_stat.delta_g > -9.0
+                // && !kmer_stat.repeats
                 && !kmer_stat.runs
-                && kmer_stat.gc_percent >= 40.0
-                && kmer_stat.gc_percent <= 60.0
+                // && kmer_stat.gc_percent >= 40.0
+                // && kmer_stat.gc_percent <= 60.0
         })
         .collect();
-    log::debug!("Done filtering out unmatched, primers left = {}", candidate_primers.len());
+    log::info!("Done filtering out unmatched, primers left = {}", candidate_primers.len());
 
     // 5. Output the primers
-    log::debug!("Outputting primers...");
+    log::info!("Outputting primers...");
     let output_file = "output/primers.csv";
     let mut writer = csv::Writer::from_path(output_file)?;
     writer.write_record(&["name", "sequence", "species_name", "tax_id"])?;
@@ -707,7 +698,7 @@ fn main() -> io::Result<()> {
         ])?;
     }
     writer.flush().expect("Error writing output to file");
-    log::debug!("Done outputting primers");
+    log::info!("Done outputting primers");
 
     Ok(())
 }

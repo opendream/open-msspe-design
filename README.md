@@ -1,6 +1,6 @@
 # Open-MSSPE-Design
 
-Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic Sequencing with Spiked Primer Enrichment (MSSPE). This approach supports viral diagnostics and genomic surveillance by enriching viral sequences during sequencing, as described in Deng et al. (2020), and openly implemented in [nf-msspe](https://github.com/MaestSi/nf-msspe). This implementation introduces significant revisions to optimize and automate the primer design process.
+Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic Sequencing with Spiked Primer Enrichment (MSSPE). This approach supports viral diagnostics and genomic surveillance by enriching viral sequences during sequencing, as described in [Deng et al. (2020)](https://doi.org/10.1038/s41564-019-0637-9), and openly implemented in [nf-msspe](https://github.com/MaestSi/nf-msspe) by Simon Maestri. This implementation introduces significant revisions to optimize and automate the primer design process.
 
 ---
 
@@ -13,23 +13,29 @@ Key features:
 - Rust implementation for performance and reliability.
 - Enhanced filtering for di-nucleotide repeats, homopolymers, and potential secondary structures via deltaG calculations.
 
-Reference:  
-Deng, X., Achari, A., Federman, S. et al. *Metagenomic sequencing with spiked primer enrichment for viral diagnostics and genomic surveillance*. *Nat Microbiol* **5**, 443–454 (2020).  
-[Read the paper](https://doi.org/10.1038/s41564-019-0637-9)
-
 ---
 
 ## Getting Started
 
 ### Prerequisites
-- Rust (latest stable version)
-- Cargo (Rust package manager)
+- [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
+- [Cargo](https://crates.io/) (Rust package manager)
+- `bio` crate for handling biological sequence data
+- `serde` and `serde_json` crates for configuration parsing
+- `mafft` for multiple sequence alignment
 
 ### Installation
 Clone the repository and navigate to the project directory:
 ```bash
 git clone https://github.com/opendream/open-msspe-design.git
 cd open-msspe-design
+```
+
+Install dependecies:
+```bash
+brew install rust
+brew install mafft
+cargo install bio serde serde_json
 ```
 
 Build the pipeline:
@@ -46,7 +52,7 @@ Prepare a FASTA file containing viral genome sequences. This will serve as the i
 
 To run the pipeline, use the following command:
 ```bash
-./target/release/open-msspe-design --input <path_to_fasta_file> --output <output_directory>
+cargo run
 ```
 
 ### Options

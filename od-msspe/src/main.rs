@@ -123,7 +123,7 @@ fn to_records(src: Vec<u8>) -> io::Result<Vec<SequenceRecord>> {
  */
 fn align_sequences(filepath: String) -> Result<Vec<u8>, io::Error> {
     let output = std::process::Command::new("mafft")
-        .args(["--auto", "--quiet", "--thread", "-1", "--ep", "0.123", "--jtt", "200PAM/k=2", &filepath.clone()])
+        .args(["--auto", "--quiet", "--thread", "-1", "--op", "1.53", "--ep", "0.123", "--jtt", "200", &filepath.clone()])
         .output()
         .expect("failed to execute MAFFT");
 

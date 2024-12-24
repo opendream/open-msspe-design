@@ -4,7 +4,8 @@ use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufReader};
+use clap::Parser;
 use itertools::Itertools;
 use std_dev::standard_deviation;
 
@@ -657,11 +658,21 @@ fn filter_kmers(stats: Vec<KmerStat>) -> Vec<KmerStat> {
         })
         .collect()
 }
+#[derive(Parser, Debug)]
+#[command(version, about, long_about=None)]
+struct Args {
+    #[arg(short, long)]
+    input: String,
+
+    #[arg(short, long)]
+    output: String,
+}
 
 fn main() -> io::Result<()> {
     env_logger::init();
 
-    let filename = String::from("zika_unaligned_dna.fasta");
+    let args = Args::parse();
+    let filename = args.input.to_string();
 
     // 1. Align sequences
     log::info!("Aligning sequences...");
@@ -705,7 +716,7 @@ fn main() -> io::Result<()> {
 
     // 5. Output the primers
     log::info!("Outputting primers...");
-    let output_file = "output/primers.csv";
+    let output_file = args.output.to_string();
     let mut writer = csv::Writer::from_path(output_file)?;
     writer.write_record(&["direction", "name", "primers", "gc", "avg", "std", "tm"])?;
     let candidate_primers = vec![candidate_primers_fwd, candidate_primers_rev];

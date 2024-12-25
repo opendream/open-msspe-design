@@ -116,11 +116,8 @@ impl<'a> SegmentManager<'a> {
         let mut ignored_segments_windows: HashSet<u32> = HashSet::new();
         for iter_no in 0..self.config.max_iterations() {
             log::trace!("Iteration: {}", iter_no + 1);
-            let kmer_freq = match find_most_freq_kmer(
-                &self.segments,
-                direction,
-                ignored_segments_windows.clone(),
-            ) {
+            let mfk = find_most_freq_kmer(&self.segments, direction, &ignored_segments_windows);
+            let kmer_freq = match mfk {
                 Some(k) => {
                     if k.frequency == 1 {
                         log::trace!(
@@ -178,7 +175,7 @@ impl<'a> SegmentManager<'a> {
 fn find_most_freq_kmer<'a>(
     segments: &Vec<Segment<'a>>,
     direction: u8,
-    ignored_segments_windows: HashSet<u32>,
+    ignored_segments_windows: &HashSet<u32>,
 ) -> Option<KmerFrequency<'a>> {
     let mut kmer_freq_map: HashMap<KmerRecord, usize> = HashMap::new();
 
@@ -643,7 +640,7 @@ mod tests {
             ],
         };
 
-        let result = find_most_freq_kmer(&manager.segments, 0, HashSet::new());
+        let result = find_most_freq_kmer(&manager.segments, 0, &HashSet::new());
         assert_eq!(result.is_some(), true);
         let kmer_freq = result.unwrap();
         assert_eq!(kmer_freq.kmer.word, "ACT");

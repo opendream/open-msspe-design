@@ -9,20 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::{self};
 use std_dev::standard_deviation;
-use types::SequenceRecord;
-
-const KMER_SIZE: usize = 13;
-const WINDOW_SIZE: usize = 500;
-const OVERLAP_SIZE: usize = 250;
-const MAX_MISMATCH_SEGMENTS: usize = 1;
-const MAX_ITERATIONS: usize = 1000;
-const SEARCH_WINDOWS_SIZE: usize = 50;
-
-const MV_CONC: f64 = 50.0; // Monovalent cation concentration (mM)
-const DV_CONC: f64 = 3.0; // Divalent cation concentration (mM)
-const DNTP_CONC: f64 = 0.0; // dNTP concentration (mM)
-const DNA_CONC: f64 = 250.0; // Primer concentration (nM)
-const ANNEALING_TEMP: f64 = 25.0; // Annealing temperature (°C)
+use types::{Args, Config, SequenceRecord};
 
 const SEQ_DIR_FWD: u8 = 0x00;
 const SEQ_DIR_REV: u8 = 0x01;
@@ -614,6 +601,7 @@ mod tests {
 }
 
 fn find_candidates_kmers<'a>(
+    config: &Config,
     segment_manager: &'a SegmentManager,
     direction: u8,
 ) -> Option<Vec<KmerFrequency<'a>>> {
@@ -622,7 +610,7 @@ fn find_candidates_kmers<'a>(
         make_kmer_segments_windows_mapping(&segment_manager.segments);
     let mut ignored_segments_windows: HashSet<u32> = HashSet::new();
 
-    for iter_no in 0..MAX_ITERATIONS {
+    for iter_no in 0..config.max_iterations() {
         log::trace!("Iteration: {}", iter_no + 1);
         let kmer_freq = match find_most_freq_kmer(
             &segment_manager.segments,
@@ -661,7 +649,7 @@ fn find_candidates_kmers<'a>(
             ignored_segments_windows.len()
         );
 
-        if kmer_freq.frequency < MAX_MISMATCH_SEGMENTS {
+        if kmer_freq.frequency < config.max_mismatch_segments() {
             log::info!("Max mismatch segments reached, exiting...");
             break;
         }
@@ -682,7 +670,7 @@ fn find_candidates_kmers<'a>(
     )
 }
 
-fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
+fn get_kmer_stats(config: &Config, kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
     // first, finding the threshold for Tm
     let primers: Vec<String> = kmer_records.iter().map(|k| k.kmer.word.clone()).collect();
     let (mean, std) = get_tm_stat(primers);
@@ -693,11 +681,11 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
             let tm = get_tm(kmer_freq.kmer.word.clone());
             let delta_g = delta_g::calculate_delta_g(
                 &kmer_freq.kmer.word.clone(),
-                MV_CONC,
-                DV_CONC,
-                DNTP_CONC,
-                DNA_CONC,
-                ANNEALING_TEMP,
+                config.mv_conc(),
+                config.dv_conc(),
+                config.dntp_conc(),
+                config.dna_conc(),
+                config.annealing_temp(),
             )
             .unwrap_or_else(|| 0.0);
             KmerStat {
@@ -816,20 +804,12 @@ fn filter_kmers(stats: Vec<KmerStat>) -> Vec<KmerStat> {
         })
         .collect()
 }
-#[derive(Parser, Debug)]
-#[command(version, about, long_about=None)]
-struct Args {
-    #[arg(short, long)]
-    input: String,
-
-    #[arg(short, long)]
-    output: String,
-}
 
 fn main() -> io::Result<()> {
     env_logger::init();
 
     let args = Args::parse();
+    let config: Config = (&args).into();
     let filename = args.input.to_string();
 
     // 1. Align sequences
@@ -840,10 +820,10 @@ fn main() -> io::Result<()> {
     // 2. Extracting n-grams from each sequence segments
     log::info!("Extracting n-grams from each sequence segments...");
     let options = PartitioningOption {
-        segment_size: WINDOW_SIZE,
-        overlap_size: OVERLAP_SIZE,
-        window_size: SEARCH_WINDOWS_SIZE,
-        kmer_size: KMER_SIZE,
+        segment_size: config.window_size(),
+        overlap_size: config.overlap_size(),
+        window_size: config.search_windows_size(),
+        kmer_size: config.kmer_size(),
     };
     let segment_manager = get_segment_manager(&records, options);
     let total_partitions = segment_manager
@@ -862,9 +842,9 @@ fn main() -> io::Result<()> {
     log::info!("Calculating frequencies of k-mer for all segments...");
     log::debug!("Total segments: {}", segment_manager.segments.len());
     let candidate_kmers_fwd =
-        find_candidates_kmers(&segment_manager, SEQ_DIR_FWD).unwrap_or_else(|| Vec::new());
+        find_candidates_kmers(&config, &segment_manager, SEQ_DIR_FWD).unwrap_or_else(|| Vec::new());
     let candidate_kmers_rev =
-        find_candidates_kmers(&segment_manager, SEQ_DIR_REV).unwrap_or_else(|| Vec::new());
+        find_candidates_kmers(&config, &segment_manager, SEQ_DIR_REV).unwrap_or_else(|| Vec::new());
     log::info!(
         "Done calculating, Total candidate k-mers: fwd: {}, rev: {}",
         candidate_kmers_fwd.len(),
@@ -873,8 +853,8 @@ fn main() -> io::Result<()> {
 
     // 4. Filtering out unmatched criteria
     log::info!("Filtering out unmatched criteria (Tm and >5nt repeats, runs...)");
-    let kmer_stats_fwd = get_kmer_stats(candidate_kmers_fwd);
-    let kmer_stats_rev = get_kmer_stats(candidate_kmers_rev);
+    let kmer_stats_fwd = get_kmer_stats(&config, candidate_kmers_fwd);
+    let kmer_stats_rev = get_kmer_stats(&config, candidate_kmers_rev);
     let candidate_primers_fwd: Vec<KmerStat> = filter_kmers(kmer_stats_fwd);
     let candidate_primers_rev: Vec<KmerStat> = filter_kmers(kmer_stats_rev);
     log::info!(

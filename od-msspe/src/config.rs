@@ -52,8 +52,8 @@ pub struct PartitioningOption {
 
 impl PartitioningOption {
     pub fn new(config: &Config) -> Self {
-        if config.overlap_size() < config.window_size() {
-            panic!("overlap_size must be greater than or equal to window_size");
+        if config.overlap_size() > config.window_size() {
+            panic!("overlap_size must be lesser than or equal to window_size");
         }
         PartitioningOption {
             segment_size: config.window_size(),
@@ -116,6 +116,47 @@ pub struct Config {
 }
 
 impl Config {
+    // default constructor
+    #[allow(dead_code)]
+    pub fn default() -> Self {
+        Config {
+            window_size: 500,
+            kmer_size: 13,
+            overlap_size: 250,
+            max_mismatch_segments: 1,
+            max_iterations: 1000,
+            search_windows_size: 50,
+            mv_conc: 50.0,
+            dv_conc: 3.0,
+            dntp_conc: 0.0,
+            dna_conc: 250.0,
+            annealing_temp: 25.0,
+        }
+    }
+
+    // constructor for testing
+    #[allow(dead_code)]
+    pub fn new_for_test(
+        segment_size: usize,
+        overlap_size: usize,
+        window_size: usize,
+        kmer_size: usize,
+    ) -> Self {
+        Config {
+            window_size: segment_size,
+            kmer_size: kmer_size,
+            overlap_size: overlap_size,
+            max_mismatch_segments: 1,
+            max_iterations: 1000,
+            search_windows_size: window_size,
+            mv_conc: 50.0,
+            dv_conc: 3.0,
+            dntp_conc: 0.0,
+            dna_conc: 250.0,
+            annealing_temp: 25.0,
+        }
+    }
+
     pub fn window_size(&self) -> usize {
         self.window_size
     }
@@ -177,9 +218,4 @@ impl From<&Args> for Config {
             annealing_temp: args.annealing_temp,
         }
     }
-}
-
-pub struct SequenceRecord {
-    pub name: String,
-    pub sequence: String,
 }

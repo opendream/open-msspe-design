@@ -1,6 +1,10 @@
-use crate::types::SequenceRecord;
 use seq_io::fasta::{Reader, Record};
 use std::io::BufReader;
+
+pub struct SequenceRecord {
+    pub name: String,
+    pub sequence: String,
+}
 
 /**
  * Aligns sequences using MAFFT

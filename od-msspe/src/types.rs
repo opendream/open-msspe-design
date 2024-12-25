@@ -43,6 +43,59 @@ pub struct Args {
     pub annealing_temp: f64,
 }
 
+pub struct PartitioningOption {
+    segment_size: usize,
+    overlap_size: usize,
+    window_size: usize,
+    kmer_size: usize,
+}
+
+impl PartitioningOption {
+    pub fn new(config: &Config) -> Self {
+        if config.overlap_size() < config.window_size() {
+            panic!("overlap_size must be greater than or equal to window_size");
+        }
+        PartitioningOption {
+            segment_size: config.window_size(),
+            overlap_size: config.overlap_size(),
+            window_size: config.search_windows_size(),
+            kmer_size: config.kmer_size(),
+        }
+    }
+
+    // constructor for testing
+    #[allow(dead_code)]
+    pub fn new_with(
+        segment_size: usize,
+        overlap_size: usize,
+        window_size: usize,
+        kmer_size: usize,
+    ) -> Self {
+        PartitioningOption {
+            segment_size,
+            overlap_size,
+            window_size,
+            kmer_size,
+        }
+    }
+
+    pub fn segment_size(&self) -> usize {
+        self.segment_size
+    }
+
+    pub fn overlap_size(&self) -> usize {
+        self.overlap_size
+    }
+
+    pub fn window_size(&self) -> usize {
+        self.window_size
+    }
+
+    pub fn kmer_size(&self) -> usize {
+        self.kmer_size
+    }
+}
+
 /*
  * private properties, provide only getters
  * to avoid direct access to the properties

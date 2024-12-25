@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::{self};
 use std_dev::standard_deviation;
-use types::{Args, Config, SequenceRecord};
+use types::{Args, Config, PartitioningOption, SequenceRecord};
 
 const SEQ_DIR_FWD: u8 = 0x00;
 const SEQ_DIR_REV: u8 = 0x01;
@@ -131,29 +131,18 @@ fn get_sequence_on_search_windows(
     (first.to_string(), second.to_string())
 }
 
-struct PartitioningOption {
-    segment_size: usize,
-    overlap_size: usize,
-    window_size: usize,
-    kmer_size: usize,
-}
-
 fn get_segment_manager(records: &Vec<SequenceRecord>, opt: PartitioningOption) -> SegmentManager {
     let mut manager = SegmentManager {
         segments: Vec::new(),
     };
 
-    if opt.overlap_size < opt.window_size {
-        panic!("Overlap windows size must be greater or equal than search windows size");
-    }
-
     for (_, record) in records.iter().enumerate() {
         let partitions =
-            partitioning_sequence(&record.sequence, opt.segment_size, opt.overlap_size);
+            partitioning_sequence(&record.sequence, opt.segment_size(), opt.overlap_size());
         for (j, partition) in partitions.iter().enumerate() {
-            let (start, end) = get_sequence_on_search_windows(&partition, opt.window_size);
-            let start_kmers = find_kmers(&start, opt.kmer_size);
-            let end_kmers = find_kmers(&end, opt.kmer_size);
+            let (start, end) = get_sequence_on_search_windows(&partition, opt.window_size());
+            let start_kmers = find_kmers(&start, opt.kmer_size());
+            let end_kmers = find_kmers(&end, opt.kmer_size());
             let mut kmers: [Vec<KmerRecord>; 2] = [Vec::new(), Vec::new()];
             for kmer in start_kmers.iter() {
                 kmers[0].push(KmerRecord {
@@ -301,12 +290,7 @@ mod tests {
                 println!("---- search_windows(end/rev)={}", rev);
             }
         }
-        let opt = PartitioningOption {
-            segment_size: 10,
-            overlap_size: 5,
-            window_size: 5,
-            kmer_size: 3,
-        };
+        let opt = PartitioningOption::new_with(10, 5, 5, 3);
         let manager = get_segment_manager(&records, opt);
         assert_eq!(manager.segments.len(), 6);
         let first_segment = manager.segments.get(0).unwrap();
@@ -810,22 +794,15 @@ fn main() -> io::Result<()> {
 
     let args = Args::parse();
     let config: Config = (&args).into();
-    let filename = args.input.to_string();
 
     // 1. Align sequences
     log::info!("Aligning sequences...");
-    let records = align::align_sequences(filename);
+    let records = align::align_sequences(args.input.to_string());
     log::info!("Done aligning sequences");
 
     // 2. Extracting n-grams from each sequence segments
     log::info!("Extracting n-grams from each sequence segments...");
-    let options = PartitioningOption {
-        segment_size: config.window_size(),
-        overlap_size: config.overlap_size(),
-        window_size: config.search_windows_size(),
-        kmer_size: config.kmer_size(),
-    };
-    let segment_manager = get_segment_manager(&records, options);
+    let segment_manager = get_segment_manager(&records, PartitioningOption::new(&config));
     let total_partitions = segment_manager
         .segments
         .iter()

@@ -19,6 +19,7 @@ Key features:
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://crates.io/) (Rust package manager)
 - `mafft` for multiple sequence alignment
+- [ntthal](https://manpages.debian.org/testing/primer3/ntthal.1.en.html) from Primer3 package
 
 ### Installation
 Clone the repository and navigate to the project directory:
@@ -33,11 +34,6 @@ brew install rust
 brew install mafft
 ```
 
-Build the pipeline:
-```bash
-cargo build --release
-```
-
 ### Input Requirements
 Prepare a FASTA file containing viral genome sequences. This will serve as the input for primer design.
 
@@ -45,7 +41,16 @@ Prepare a FASTA file containing viral genome sequences. This will serve as the i
 
 ## Usage
 
-To run the pipeline, use the following command:
+Build the pipeline:
+```bash
+cargo build --release
+```
+
+To run the pipeline:
+```bash
+./target/release/od-msspe
+```
+ OR
 ```bash
 cargo run
 ```
@@ -59,8 +64,6 @@ cargo run
 ```bash
 cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
-
-This generates primers in the specified output directory, optimized for MSSPE.
 
 Debugging
 ```bash

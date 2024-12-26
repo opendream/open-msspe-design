@@ -6,8 +6,6 @@ Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic
 
 ## Overview
 
-MSSPE combines metagenomic sequencing with targeted primer enrichment to enhance the detection of specific viral genomes. This repository provides an automated pipeline to generate primers tailored for specific viral targets, ensuring reproducibility and efficiency in primer design.
-
 Key features:
 - Fully automated primer design workflow.
 - Rust implementation for performance and reliability.
@@ -20,8 +18,6 @@ Key features:
 ### Prerequisites
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://crates.io/) (Rust package manager)
-- `bio` crate for handling biological sequence data
-- `serde` and `serde_json` crates for configuration parsing
 - `mafft` for multiple sequence alignment
 
 ### Installation
@@ -35,7 +31,6 @@ Install dependecies:
 ```bash
 brew install rust
 brew install mafft
-cargo install bio serde serde_json
 ```
 
 Build the pipeline:
@@ -62,10 +57,15 @@ cargo run
 
 ### Example
 ```bash
-./target/release/open-msspe-design --input data/viral_genomes.fasta --output results/
+cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
 
 This generates primers in the specified output directory, optimized for MSSPE.
+
+Debugging
+```bash
+RUST_LOG=info cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
+```
 
 ---
 

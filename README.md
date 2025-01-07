@@ -79,3 +79,5 @@ Contributions, issues, and feature requests are welcome! Please open an issue or
 
 ## License
 This project is licensed under the [MIT License](LICENSE).
+
+Maintainers of this project are grateful for the support of the [Skoll Foundation](https://skoll.org/).

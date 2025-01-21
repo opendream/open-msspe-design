@@ -50,7 +50,7 @@ To run the pipeline:
 ```bash
 ./target/release/od-msspe
 ```
- OR
+ OR build & run:
 ```bash
 cargo run
 ```
@@ -62,12 +62,12 @@ cargo run
 
 ### Example
 ```bash
-cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
+./target/release/od-msspe -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
 
 Debugging
 ```bash
-RUST_LOG=info cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
+RUST_LOG=info ./target/release/od-msspe -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
 
 ---

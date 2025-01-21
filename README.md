@@ -62,12 +62,14 @@ cargo run
 
 ### Example
 ```bash
-./target/release/od-msspe -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
+cd od-msspe
+./target/release/od-msspe --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
 
 Debugging
 ```bash
-RUST_LOG=info ./target/release/od-msspe -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
+cd od-msspe
+RUST_LOG=info ./target/release/od-msspe --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
 
 ---

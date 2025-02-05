@@ -1,13 +1,16 @@
 mod delta_g;
+mod primer;
 
 use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::{self, BufReader};
+use std::iter::Map;
 use clap::Parser;
 use itertools::Itertools;
 use std_dev::standard_deviation;
+use crate::primer::{check_primers, CheckPrimerParams, PrimerInfo, DEFAULT_MAX_TM, DEFAULT_MIN_TM};
 
 const KMER_SIZE: usize = 13;
 const WINDOW_SIZE: usize = 500;
@@ -521,12 +524,31 @@ fn find_candidates_kmers<'a>(segment_manager: &'a SegmentManager, direction: u8)
 fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
     // first, finding the threshold for Tm
     let primers: Vec<String> = kmer_records.iter().map(|k| k.kmer.word.clone()).collect();
-    let (mean, std) = get_tm_stat(primers);
+
+    let params = CheckPrimerParams{
+        min_tm: DEFAULT_MIN_TM,
+        max_tm: DEFAULT_MAX_TM,
+    };
+    let check_primers_result = check_primers(&primers, params);
+    if check_primers_result.is_err() {
+        panic!("Error while checking primers");
+    }
+    
+    let primer_info_list = check_primers_result.unwrap();
+    let mut primer_info_map = HashMap::new();
+    for info in &primer_info_list {
+        primer_info_map.entry(info.id).or_insert(info);
+    }
+    let (mean, std) = get_tm_stat(&primer_info_list);
 
     kmer_records
         .iter()
         .map(|kmer_freq| {
-            let tm = get_tm(kmer_freq.kmer.word.clone());
+            let primer_info = primer_info_map.get(&kmer_freq.kmer.word.as_str());
+            let (tm, gc) = match primer_info {
+                Some(info) => (info.tm, info.gc),
+                _ => (0.0, 0.0),
+            };
             let delta_g = delta_g::calculate_delta_g(
                 &kmer_freq.kmer.word.clone(),
                 MV_CONC,
@@ -538,7 +560,7 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
             KmerStat {
                 word: kmer_freq.kmer.word.clone(),
                 direction: kmer_freq.kmer.direction,
-                gc_percent: get_gc_percent(kmer_freq.kmer.word.clone()),
+                gc_percent: gc,
                 mean,
                 std,
                 tm,
@@ -580,17 +602,11 @@ fn get_tm(kmer: String) -> f32 {
  *
  * Calculated by find (2*sd(Tm)) + mean(Tm) of the primers
  */
-fn get_tm_stat(primers: Vec<String>) -> (f32, f32) {
-    let mut tm_values: Vec<f32> = Vec::new();
-    for primer in primers {
-        tm_values.push(get_tm(primer));
-    }
-    let mean_tm = tm_values.iter().sum::<f32>() / tm_values.len() as f32;
-    let sd_tm = standard_deviation(&tm_values);
-    (
-        mean_tm,
-        sd_tm.standard_deviation,
-    )
+fn get_tm_stat(primer_info_list: &Vec<PrimerInfo>) -> (f32, f32) {
+    let tm_values: Vec<f32> = primer_info_list.iter().map(|info| info.tm).collect();
+    let mean = tm_values.iter().sum::<f32>() / tm_values.len() as f32;
+    let std = standard_deviation(&tm_values);
+    (mean, std.standard_deviation)
 }
 
 fn in_tm_threshold(kmer: String, mean: f32, std: f32) -> bool {

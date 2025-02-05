@@ -9,7 +9,13 @@ Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic
 Key features:
 - Fully automated primer design workflow.
 - Rust implementation for performance and reliability.
-- Enhanced filtering for di-nucleotide repeats, homopolymers, and potential secondary structures via deltaG calculations.
+- Uses nearest-neighbor thermodynamic models from the standalone Primer3 package [ntthal](https://manpages.debian.org/testing/primer3/ntthal.1.en.html)
+- Enhanced filtering for:
+  - nucleotide repeats
+  - homopolymers
+  - extremely high/low Tm values (<30 or >60)
+  - hairpins (with same primer)
+  - cross-dimers (across multiple primers/entire pool)
 
 ---
 
@@ -19,7 +25,6 @@ Key features:
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://crates.io/) (Rust package manager)
 - `mafft` for multiple sequence alignment
-- [ntthal](https://manpages.debian.org/testing/primer3/ntthal.1.en.html) from Primer3 package
 
 ### Installation
 Clone the repository and navigate to the project directory:

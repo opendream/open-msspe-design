@@ -5,8 +5,8 @@ use std::string::ParseError;
 
 #[doc = "Find primer related values like Tm, Hairpin, Dimers using Primer3"]
 
-pub const DEFAULT_MIN_TM: f64 = 30.0;
-pub const DEFAULT_MAX_TM: f64 = 60.0;
+pub const DEFAULT_MIN_TM: f32 = 30.0;
+pub const DEFAULT_MAX_TM: f32 = 60.0;
 
 #[derive(Clone)]
 pub struct PrimerInfo<'a> {
@@ -16,6 +16,19 @@ pub struct PrimerInfo<'a> {
     pub self_any_th: f32,
     pub self_end_th: f32,
     pub hairpin_th: f32,
+}
+
+impl<'a> PrimerInfo<'a> {
+    pub(crate) fn new() -> PrimerInfo<'a> {
+        PrimerInfo{
+            id: "",
+            tm: 0.0,
+            gc: 0.0,
+            self_any_th: 0.0,
+            self_end_th: 0.0,
+            hairpin_th: 0.0,
+        }
+    }
 }
 
 impl<'a> PrimerInfo<'a> {
@@ -30,8 +43,8 @@ impl<'a> PrimerInfo<'a> {
 }
 
 pub struct CheckPrimerParams {
-    pub min_tm: f64,
-    pub max_tm: f64,
+    pub min_tm: f32,
+    pub max_tm: f32,
 }
 
 /// Try to parse Primer3 output as PrimerInfo

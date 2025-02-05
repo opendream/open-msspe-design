@@ -25,6 +25,12 @@ const DNTP_CONC: f64 = 0.0; // dNTP concentration (mM)
 const DNA_CONC: f64 = 250.0; // Primer concentration (nM)
 const ANNEALING_TEMP: f64 = 25.0; // Annealing temperature (°C)
 
+const PRIMER_MIN_TM: f32 = 30.0;
+const PRIMER_MAX_TM: f32 = 60.0;
+const PRIMER_MAX_SELF_ANY_TH: f32 = DEFAULT_MIN_TM - 10.0;
+const PRIMER_MAX_SELF_END_TH: f32 = DEFAULT_MIN_TM - 10.0;
+const PRIMER_MAX_HAIRPIN_TH: f32 = DEFAULT_MIN_TM - 10.0;
+
 struct SequenceRecord {
     name: String,
     sequence: String,
@@ -67,6 +73,7 @@ impl Hash for KmerFrequency<'_> {
     }
 }
 
+#[derive(Clone)]
 struct KmerStat {
     word: String,
     direction: u8,
@@ -75,6 +82,9 @@ struct KmerStat {
     std: f32,
     tm: f32,
     tm_ok: bool,
+    self_any_th: f32,
+    self_end_th: f32,
+    hairpin_th: f32,
     repeats: bool,
     runs: bool,
     delta_g: f32,
@@ -533,7 +543,7 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
     if check_primers_result.is_err() {
         panic!("Error while checking primers");
     }
-    
+
     let primer_info_list = check_primers_result.unwrap();
     let mut primer_info_map = HashMap::new();
     for info in &primer_info_list {
@@ -544,10 +554,9 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
     kmer_records
         .iter()
         .map(|kmer_freq| {
-            let primer_info = primer_info_map.get(&kmer_freq.kmer.word.as_str());
-            let (tm, gc) = match primer_info {
-                Some(info) => (info.tm, info.gc),
-                _ => (0.0, 0.0),
+            let primer_info = match primer_info_map.get(&kmer_freq.kmer.word.as_str()) {
+                Some(info) => *info,
+                _ => &PrimerInfo::new(),
             };
             let delta_g = delta_g::calculate_delta_g(
                 &kmer_freq.kmer.word.clone(),
@@ -560,11 +569,14 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
             KmerStat {
                 word: kmer_freq.kmer.word.clone(),
                 direction: kmer_freq.kmer.direction,
-                gc_percent: gc,
                 mean,
                 std,
-                tm,
+                gc_percent: primer_info.gc,
+                tm: primer_info.tm,
                 tm_ok: in_tm_threshold(kmer_freq.kmer.word.clone(), mean, std),
+                self_any_th: primer_info.self_any_th,
+                self_end_th: primer_info.self_end_th,
+                hairpin_th: primer_info.hairpin_th,
                 repeats: is_repeats(kmer_freq.kmer.word.clone()),
                 runs: is_run(kmer_freq.kmer.word.clone()),
                 delta_g: delta_g as f32,
@@ -656,22 +668,15 @@ fn filter_kmers(stats: Vec<KmerStat>) -> Vec<KmerStat> {
     stats
         .iter()
         .filter(|kmer_stat| {
-            kmer_stat.tm_ok
+            (kmer_stat.tm > PRIMER_MIN_TM && kmer_stat.tm < PRIMER_MAX_TM)
+                && kmer_stat.self_any_th < PRIMER_MAX_SELF_ANY_TH
+                && kmer_stat.self_end_th < PRIMER_MAX_SELF_END_TH
+                && kmer_stat.hairpin_th < PRIMER_MAX_HAIRPIN_TH
+                && kmer_stat.tm_ok
                 && kmer_stat.delta_g > -9.0
                 && !kmer_stat.runs
         })
-        .map(|kmer_stat| KmerStat {
-            word: kmer_stat.word.clone(),
-            direction: kmer_stat.direction,
-            gc_percent: kmer_stat.gc_percent,
-            mean: kmer_stat.mean,
-            std: kmer_stat.std,
-            tm: kmer_stat.tm,
-            tm_ok: kmer_stat.tm_ok,
-            repeats: kmer_stat.repeats,
-            runs: kmer_stat.runs,
-            delta_g: kmer_stat.delta_g,
-        })
+        .map(|kmer_stat| kmer_stat.clone())
         .collect()
 }
 #[derive(Parser, Debug)]

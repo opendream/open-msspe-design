@@ -1,6 +1,7 @@
 mod delta_g;
 mod primer;
 
+use std::arch::aarch64::vabs_f32;
 use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
 use std::collections::{HashMap, HashSet};
@@ -573,7 +574,7 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
                 std,
                 gc_percent: primer_info.gc,
                 tm: primer_info.tm,
-                tm_ok: in_tm_threshold(kmer_freq.kmer.word.clone(), mean, std),
+                tm_ok: tm_in_threshold(primer_info.tm, mean, std),
                 self_any_th: primer_info.self_any_th,
                 self_end_th: primer_info.self_end_th,
                 hairpin_th: primer_info.hairpin_th,
@@ -621,13 +622,8 @@ fn get_tm_stat(primer_info_list: &Vec<PrimerInfo>) -> (f32, f32) {
     (mean, std.standard_deviation)
 }
 
-fn in_tm_threshold(kmer: String, mean: f32, std: f32) -> bool {
-    let tm_upper_bound = mean + (2.0 * std);
-    let tm_lower_bound = mean - (2.0 * std);
-
-    let tm = get_tm(kmer);
-
-    tm <= tm_upper_bound && tm >= tm_lower_bound
+fn tm_in_threshold(tm: f32, mean: f32, std: f32) -> bool {
+    (tm - mean).abs() <= (2.0 * std)
 }
 
 /**

@@ -1,5 +1,5 @@
 use std::env::current_dir;
-use std::io::{Stdout, Write};
+use std::io::{Write};
 use std::process::{Command, Stdio};
 use std::string::ParseError;
 

@@ -1,7 +1,9 @@
 mod delta_g;
 mod primer;
+mod graphdb;
 
 use std::arch::aarch64::vabs_f32;
+use graphdb::Edge;
 use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
 use std::collections::{HashMap, HashSet};
@@ -11,6 +13,8 @@ use std::iter::Map;
 use clap::Parser;
 use itertools::Itertools;
 use std_dev::standard_deviation;
+use crate::delta_g::{run_ntthal, NtthalOptions};
+use crate::graphdb::GraphDB;
 use crate::primer::{check_primers, CheckPrimerParams, PrimerInfo, DEFAULT_MAX_TM, DEFAULT_MIN_TM};
 
 const KMER_SIZE: usize = 13;
@@ -20,11 +24,11 @@ const MAX_MISMATCH_SEGMENTS: usize = 1;
 const MAX_ITERATIONS: usize = 1000;
 const SEARCH_WINDOWS_SIZE: usize = 50;
 
-const MV_CONC: f64 = 50.0; // Monovalent cation concentration (mM)
-const DV_CONC: f64 = 3.0; // Divalent cation concentration (mM)
-const DNTP_CONC: f64 = 0.0; // dNTP concentration (mM)
-const DNA_CONC: f64 = 250.0; // Primer concentration (nM)
-const ANNEALING_TEMP: f64 = 25.0; // Annealing temperature (°C)
+const MV_CONC: f32 = 50.0; // Monovalent cation concentration (mM)
+const DV_CONC: f32 = 3.0; // Divalent cation concentration (mM)
+const DNTP_CONC: f32 = 0.0; // dNTP concentration (mM)
+const DNA_CONC: f32 = 250.0; // Primer concentration (nM)
+const ANNEALING_TEMP: f32 = 25.0; // Annealing temperature (°C)
 
 const PRIMER_MIN_TM: f32 = 30.0;
 const PRIMER_MAX_TM: f32 = 60.0;
@@ -559,14 +563,6 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
                 Some(info) => *info,
                 _ => &PrimerInfo::new(),
             };
-            let delta_g = delta_g::calculate_delta_g(
-                &kmer_freq.kmer.word.clone(),
-                MV_CONC,
-                DV_CONC,
-                DNTP_CONC,
-                DNA_CONC,
-                ANNEALING_TEMP,
-            ).unwrap_or_else(|| 0.0);
             KmerStat {
                 word: kmer_freq.kmer.word.clone(),
                 direction: kmer_freq.kmer.direction,
@@ -580,7 +576,7 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
                 hairpin_th: primer_info.hairpin_th,
                 repeats: is_repeats(kmer_freq.kmer.word.clone()),
                 runs: is_run(kmer_freq.kmer.word.clone()),
-                delta_g: delta_g as f32,
+                delta_g: 0.0,
             }
         })
         .collect()
@@ -669,7 +665,6 @@ fn filter_kmers(stats: Vec<KmerStat>) -> Vec<KmerStat> {
                 && kmer_stat.self_end_th < PRIMER_MAX_SELF_END_TH
                 && kmer_stat.hairpin_th < PRIMER_MAX_HAIRPIN_TH
                 && kmer_stat.tm_ok
-                && kmer_stat.delta_g > -9.0
                 && !kmer_stat.runs
         })
         .map(|kmer_stat| kmer_stat.clone())
@@ -727,16 +722,76 @@ fn main() -> io::Result<()> {
     log::info!("Filtering out unmatched criteria (Tm and >5nt repeats, runs...)");
     let kmer_stats_fwd = get_kmer_stats(candidate_kmers_fwd);
     let kmer_stats_rev = get_kmer_stats(candidate_kmers_rev);
+
     let candidate_primers_fwd: Vec<KmerStat> = filter_kmers(kmer_stats_fwd);
     let candidate_primers_rev: Vec<KmerStat> = filter_kmers(kmer_stats_rev);
-    log::info!("Done filtering out unmatched, primers left fwd={}, rev={}", candidate_primers_fwd.len(), candidate_primers_rev.len());
+
+    let primers: Vec<String> = candidate_primers_fwd
+        .iter()
+        .chain(&candidate_primers_rev)
+        .map(|s| s.word.clone())
+        .collect();
+    let opts = NtthalOptions{
+        mv: MV_CONC,
+        dv: DV_CONC,
+        dntp: DNTP_CONC,
+        conc: DNA_CONC,
+        t: ANNEALING_TEMP,
+    };
+    let graph = run_ntthal(primers.clone(), opts)?;
+    let mut candidate_unusable_edges: Vec<&Edge> = Vec::new();
+    let mut primers_total_low_dg: HashMap<String, i32> = HashMap::new();
+    // find nodes with dG < -9.0kmol-1
+    for primer in primers.clone() {
+        let edges = graph.get_edges_for_node(&primer);
+        for edge in edges {
+            let dg = edge.get_dg();
+            if dg < -9000.0 {
+                candidate_unusable_edges.push(&edge);
+                let (a, b) = graph.get_edge_nodes(&edge);
+                log::debug!("Edge: {} -> {} dg={}", a.id, b.id, dg);
+                *primers_total_low_dg.entry(a.id.clone()).or_insert(0) += 1;
+                *primers_total_low_dg.entry(b.id.clone()).or_insert(0) += 1;
+            }
+        }
+    }
+    let mut deleted_primers: HashSet<String> = HashSet::new();
+    for edge in candidate_unusable_edges {
+        let (a, b) = graph.get_edge_nodes(edge);
+        let total_n_a = primers_total_low_dg.get(&a.id).unwrap();
+        let total_n_b = primers_total_low_dg.get(&b.id).unwrap();
+        if total_n_a > &1 {
+            deleted_primers.insert(a.id.clone());
+        }
+        if total_n_b > &1 {
+            deleted_primers.insert(b.id.clone());
+        }
+        if total_n_a == &1 && !deleted_primers.contains(b.id.as_str()) {
+            deleted_primers.insert(a.id.clone());
+        }
+        if total_n_b == &1 && !deleted_primers.contains(a.id.as_str()) {
+            deleted_primers.insert(b.id.clone());
+        }
+    }
+    log::debug!("Deleted primers: {:?}", deleted_primers);
+    let good_delta_g_fwd_primers: Vec<KmerStat> = candidate_primers_fwd
+        .iter()
+        .filter(|p| !deleted_primers.contains(p.word.as_str()))
+        .map(|p| p.clone())
+        .collect();
+    let good_delta_g_rev_primers: Vec<KmerStat> = candidate_primers_rev
+        .iter()
+        .filter(|p| !deleted_primers.contains(p.word.as_str()))
+        .map(|p| p.clone())
+        .collect();
+    log::info!("Done filtering out unmatched, primers left fwd={}, rev={}", good_delta_g_fwd_primers.len(), good_delta_g_rev_primers.len());
 
     // 5. Output the primers
     log::info!("Outputting primers...");
     let output_file = args.output.to_string();
     let mut writer = csv::Writer::from_path(output_file)?;
     writer.write_record(&["direction", "name", "primers", "gc", "avg", "std", "tm"])?;
-    let candidate_primers = vec![candidate_primers_fwd, candidate_primers_rev];
+    let candidate_primers = vec![good_delta_g_fwd_primers, good_delta_g_rev_primers];
     for candidates in candidate_primers {
         for (idx, primer) in candidates.iter().enumerate() {
             let direction = if primer.direction == SEQ_DIR_FWD {

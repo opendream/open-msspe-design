@@ -161,26 +161,27 @@ mod tests {
     use super::*;
     #[test]
     fn test_parse_primer3_output() {
-        let result = "SEQUENCE_ID=example1
-SEQUENCE_PRIMER=AGCCCGTGTAAAC
-PRIMER_TASK=check_primers
-PRIMER_MIN_SIZE=13
-PRIMER_MIN_TM=30.0
-PRIMER_MAX_TM=60.0
-PRIMER_LEFT_NUM_RETURNED=1
-PRIMER_RIGHT_NUM_RETURNED=0
-PRIMER_INTERNAL_NUM_RETURNED=0
-PRIMER_PAIR_NUM_RETURNED=0
-PRIMER_LEFT_0_PENALTY=23.273240
-PRIMER_LEFT_0_SEQUENCE=AGCCCGTGTAAAC
-PRIMER_LEFT_0=0,13
-PRIMER_LEFT_0_TM=43.727
-PRIMER_LEFT_0_GC_PERCENT=53.846
-PRIMER_LEFT_0_SELF_ANY_TH=0.00
-PRIMER_LEFT_0_SELF_END_TH=0.00
-PRIMER_LEFT_0_HAIRPIN_TH=0.00
-PRIMER_LEFT_0_END_STABILITY=2.0100
-=";
+        let result = "\
+            SEQUENCE_ID=example1\n\
+            SEQUENCE_PRIMER=AGCCCGTGTAAAC\n\
+            PRIMER_TASK=check_primers\n\
+            PRIMER_MIN_SIZE=13\n\
+            PRIMER_MIN_TM=30.0\n\
+            PRIMER_MAX_TM=60.0\n\
+            PRIMER_LEFT_NUM_RETURNED=1\n\
+            PRIMER_RIGHT_NUM_RETURNED=0\n\
+            PRIMER_INTERNAL_NUM_RETURNED=0\n\
+            PRIMER_PAIR_NUM_RETURNED=0\n\
+            PRIMER_LEFT_0_PENALTY=23.273240\n\
+            PRIMER_LEFT_0_SEQUENCE=AGCCCGTGTAAAC\n\
+            PRIMER_LEFT_0=0,13\n\
+            PRIMER_LEFT_0_TM=43.727\n\
+            PRIMER_LEFT_0_GC_PERCENT=53.846\n\
+            PRIMER_LEFT_0_SELF_ANY_TH=0.00\n\
+            PRIMER_LEFT_0_SELF_END_TH=0.00\n\
+            PRIMER_LEFT_0_HAIRPIN_TH=0.00\n\
+            PRIMER_LEFT_0_END_STABILITY=2.0100\n\
+            =";
         let output = parse_primer3_output(result);
 
         assert!(output.is_ok());
@@ -201,14 +202,15 @@ PRIMER_LEFT_0_END_STABILITY=2.0100
             max_tm: DEFAULT_MAX_TM,
         };
         let result = format_primer3_input(&primers, &params);
-        assert_eq!(result, "SEQUENCE_ID=AGCCCGTGTAAAC
-SEQUENCE_PRIMER=AGCCCGTGTAAAC
-PRIMER_TASK=check_primers
-PRIMER_MIN_SIZE=13
-PRIMER_MIN_TM=30.00
-PRIMER_MAX_TM=60.00
-PRIMER_PICK_ANYWAY=1
-=\n")
+        assert_eq!(result, "\
+            SEQUENCE_ID=AGCCCGTGTAAAC\n\
+            SEQUENCE_PRIMER=AGCCCGTGTAAAC\n\
+            PRIMER_TASK=check_primers\n\
+            PRIMER_MIN_SIZE=13\n\
+            PRIMER_MIN_TM=30.00\n\
+            PRIMER_MAX_TM=60.00\n\
+            PRIMER_PICK_ANYWAY=1\n\
+            =\n")
     }
 
     #[test]

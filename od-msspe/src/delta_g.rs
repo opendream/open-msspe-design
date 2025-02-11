@@ -1,44 +1,211 @@
 use std::env::current_dir;
-use std::process::Command;
+use std::collections::{HashMap};
+use std::io::Write;
+use std::process::{Command, Stdio};
+use crate::graphdb::{Edge, GraphDB};
 
-/// Function to call ntthal and calculate ΔG for given sequences
-pub fn calculate_delta_g(seq_a: &str, mv: f64, dv: f64, dntp: f64, conc: f64, t: f64) -> Option<f64> {
-    // Execute ntthal with the given sequences and conditions
-    log::trace!("Calculating ΔG for sequences: {}", seq_a);
-    let path = format!("{}/primer3_config/", current_dir().unwrap().display());
-    let mut cmd = Command::new("./bin/ntthal");
-    // log::debug!("Executing ntthal with args: -a HAIRPIN -mv {:.2} -dv {:.2} -n {:.2} -d {:.2} -t {:.2} -path {} -s1 {}", mv, dv, dntp, conc, t, path, seq_a);
-    cmd.args(&[
-            "-a", "HAIRPIN",
-            "-mv", format!("{:.2}", mv).as_str(),
-            "-dv", format!("{:.2}", dv).as_str(),
-            "-n", format!("{:.2}", dntp).as_str(),
-            "-d", format!("{:.2}", conc).as_str(),
-            "-t", format!("{:.2}", t).as_str(),
-            "-path", &*path,
-            "-s1", seq_a,
-        ]);
-    let output = cmd.output().expect("Failed to execute ntthal");
-
-    // Check if command execution was successful
-    if !output.status.success() {
-        log::error!("ntthal failed with status: {}, msg: {}", output.status, &String::from_utf8_lossy(&output.stderr));
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let re = regex::Regex::new(r"dG = (-?\d+(\.\d+)?)").unwrap();
-
-    let caps = stdout.lines()
-        .find(|line| re.captures(line).is_some())
-        .map(|line| re.captures(line).unwrap()[1].to_string());
-    match caps {
-        Some(caps) => {
-            let d_g = caps.parse::<f64>().unwrap() / 1000.0;
-            log::debug!("Seq: {}, ΔG: {}", seq_a, d_g);
-            Some(d_g)
-        },
-        None => {
-            None
+impl Edge {
+    pub fn get_dg(&self) -> f32 {
+        match self.attributes.get("dg") {
+            Some(dg) => dg.parse::<f32>().unwrap(),
+            None => 0.0,
         }
     }
+}
+
+pub fn parse_ntthal_output(input: &String, output: String, delta_g_threshold: f32) -> GraphDB {
+    let mut graph = GraphDB::new();
+
+    let mut output_lines = output.lines();
+    for input_line in input.lines() {
+        match output_lines.nth(0) {
+            Some(output_line) => {
+                match output_line.split_whitespace().nth(13) {
+                    Some(dg_txt) => {
+                        let dg = dg_txt.parse::<f32>().unwrap();
+                        if dg < delta_g_threshold {
+                            let primers = input_line.split(",").collect::<Vec<&str>>();
+                            let primer_a = primers[0].to_string();
+                            let primer_b = primers[1].to_string();
+                            graph.add_node(primer_a.clone());
+                            graph.add_node(primer_b.clone());
+
+                            // saving primers
+                            let mut attrs = HashMap::new();
+                            attrs.insert("dg".to_string(), format!("{:.2}", dg));
+                            graph.add_edge(&primer_a, &primer_b, attrs);
+                        }
+                    },
+                    None => {
+                        log::debug!("cannot parse output line: {}", output_line);
+                        
+                    },
+                }
+            },
+            None => {}
+        }
+        // flush to next group
+        output_lines.nth(3);
+    }
+
+    graph
+}
+
+pub fn format_ntthal_input(primers: &[String]) -> String {
+    let mut output = "".to_string();
+    for a in primers {
+        for b in primers {
+            if a.len() != 13 || b.len() != 13 {
+                log::debug!("primers not valid: a:{}, b:{}", a, b);
+            }
+            output.push_str(&format!("{},{}\n", a, b));
+        }
+    }
+    output.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::delta_g::{format_ntthal_input, parse_ntthal_output};
+    use crate::graphdb::get_edge_id;
+
+    #[test]
+    pub fn test_format_ntthal_input() {
+        let primers = vec!["GAAGCAGTATTTT".to_string(),"AATATAGAGGCTG".to_string()];
+        let result = format_ntthal_input(&primers);
+        let expected = "\
+            GAAGCAGTATTTT,GAAGCAGTATTTT\n\
+            GAAGCAGTATTTT,AATATAGAGGCTG\n\
+            AATATAGAGGCTG,GAAGCAGTATTTT\n\
+            AATATAGAGGCTG,AATATAGAGGCTG".to_string();
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    pub fn test_parse_ntthal_output() {
+        let input = "\
+            AGGCCTATATCCA,GAAGCAGTATTTT\n\
+            GCACTTGATGTGA,GAAGCAGTATTTT\n\
+            CTGAAGCAGTATT,GCATCTTTCCCTT\n\
+            CTGAAGCAGTATT,AATTGTGTGGATT\n\
+            AGTCCTGCGTGAT,TGGCCTACATCAG\n\
+            ".to_string();
+        let output = "\
+            Calculated thermodynamical parameters for dimer:        dS = -75.3988   dH = -25700     dG = -2315.07   t = -35.9834\n\
+            SEQ           AG  CTATATCCA\n\
+            SEQ             GC\n\
+            STR             CG\n\
+            STR     TTTTATGA  AAG------\n\
+            Calculated thermodynamical parameters for dimer:        dS = -65.3976   dH = -22500     dG = -2216.94   t = -44.4018\n\
+            SEQ           GCA   GATGTGA\n\
+            SEQ              CTT\n\
+            STR              GAA\n\
+            STR     TTTTATGAC   G------\n\
+            Calculated thermodynamical parameters for dimer:  dS = -101.596   dH = -33500     dG = -3209.05   t = -24.1908\n\
+            SEQ       CT  A  AGTATT\n\
+            SEQ         GA GC\n\
+            STR         CT CG\n\
+            STR TTCCCTTT  A  ------\n\
+            Calculated thermodynamical parameters for dimer:  dS = -54.2976   dH = -17700     dG = -1511.18   t = -70.3113\n\
+            SEQ CTG  G AGTATT---\n\
+            SEQ    AA C\n\
+            STR    TT G\n\
+            STR      A GTGTGTTAA\n\
+            Calculated thermodynamical parameters for dimer:  dS = -141.872   dH = -45800     dG = -3500.74   t = -11.1906\n\
+            SEQ AGTC   CG  AT-----\n\
+            SEQ     CTG  TG\n\
+            STR     GAC  AC\n\
+            STR        T-  ATCCGGT".to_string();
+        let graph = parse_ntthal_output(&input, output, 100000.00);
+
+        let id_a = &"AGGCCTATATCCA".to_string();
+        let id_b = &"GAAGCAGTATTTT".to_string();
+        let id_c = &"GCACTTGATGTGA".to_string();
+        let id_d = &"CTGAAGCAGTATT".to_string();
+        let id_e = &"GCATCTTTCCCTT".to_string();
+        let id_f = &"TGGCCTACATCAG".to_string();
+        let node_a = graph.get_node(id_a);
+        let node_b = graph.get_node(id_b);
+        let node_c = graph.get_node(id_c);
+        let node_d = graph.get_node(id_d);
+        let node_e = graph.get_node(id_e);
+        let node_f = graph.get_node(id_f);
+        assert!(node_a.is_some());
+        assert!(node_b.is_some());
+        assert!(node_c.is_some());
+        assert!(node_d.is_some());
+        assert!(node_e.is_some());
+        assert!(node_f.is_some());
+
+        let edges_a = graph.get_edges_for_node(id_a);
+        let edges_b = graph.get_edges_for_node(id_b);
+        assert_eq!(edges_a.len(), 1);
+        assert_eq!(edges_b.len(), 2);
+
+        let edge_ab_id = get_edge_id(id_a, id_b);
+        let edge_ab = graph.get_edge(&edge_ab_id);
+        assert_eq!(edge_ab.unwrap().get_dg(), -2315.07);
+
+        let edge_de_id = get_edge_id(id_d, id_e);
+        let edge_de = graph.get_edge(&edge_de_id);
+        assert_eq!(edge_de.unwrap().get_dg(), -3209.05);
+    }
+}
+
+pub struct NtthalOptions {
+    pub mv: f32,
+    pub dv: f32,
+    pub dntp: f32,
+    pub conc: f32,
+    pub t: f32,
+}
+
+pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, std::io::Error> {
+    // Execute ntthal with the given sequences and conditions
+    log::trace!("Calculating ΔG for {} sequences", primers.len());
+    let path = format!("{}/primer3_config/", current_dir()?.display());
+    let mut cmd = Command::new("./bin/ntthal")
+        .args(&[
+            "-a", "ANY",
+            "-mv", format!("{:.2}", opts.mv).as_str(),
+            "-dv", format!("{:.2}", opts.dv).as_str(),
+            "-n", format!("{:.2}", opts.dntp).as_str(),
+            "-d", format!("{:.2}", opts.conc).as_str(),
+            "-t", format!("{:.2}", opts.t).as_str(),
+            "-path", &*path,
+            "-i",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    log::debug!("Executing ntthal with args: \
+        -a ANY \
+        -mv {:.2} \
+        -dv {:.2} \
+        -n {:.2} \
+        -d {:.2} \
+        -t {:.2} \
+        -path {}",
+        opts.mv, opts.dv, opts.dntp, opts.conc, opts.t, path);
+
+    // Write the input sequences to the stdin of the process
+    let input = format_ntthal_input(&primers);
+    let input_clone = input.clone();
+    if let Some(mut stdin) = cmd.stdin.take() {
+        std::thread::spawn(move || {
+            stdin.write_all(input_clone.as_bytes()).expect("failed to write to stdin");
+        });
+    }
+    log::debug!("Done writing ntthal input");
+
+    // Read the output from the stdout of the process
+    let output = cmd.wait_with_output()?;
+    if !output.status.success() {
+        return Err(std::io::Error::new(std::io::ErrorKind::Other, "ntthal process failed"));
+    }
+
+    // Process the output as needed
+    let result = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_ntthal_output(&input, result.to_string(), -9000.0))
 }

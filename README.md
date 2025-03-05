@@ -26,7 +26,7 @@ Key features:
 ### Prerequisites
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://crates.io/) (Rust package manager)
-- `mafft` for multiple sequence alignment
+- [mafft](https://mafft.cbrc.jp/alignment/server/index.html) for multiple sequence alignment
 
 ### Installation
 Clone the repository and navigate to the project directory:
@@ -36,6 +36,7 @@ cd open-msspe-design
 ```
 
 Install dependecies:
+#### macOS
 ```bash
 brew install rust
 brew install mafft

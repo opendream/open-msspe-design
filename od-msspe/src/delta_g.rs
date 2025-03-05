@@ -82,7 +82,7 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
             ntthal = path.into_os_string().into_string().unwrap();
         }
     }
-    
+
     let mut cmd = Command::new(ntthal)
         .args([
             "-a",

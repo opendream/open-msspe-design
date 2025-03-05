@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checking out sources
         uses: actions/checkout@v4
+      - name: Installing Primer3
+        run: apt install -y primer3
       - name: Installing Rust toolchain
         run: rustup toolchain install stable
       - uses: Swatinem/rust-cache@v2

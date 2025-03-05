@@ -105,7 +105,7 @@ impl std::hash::Hash for Edge {
 
 #[cfg(test)]
 mod tests {
-    use crate::graphdb::{GraphDB};
+    use crate::graphdb::GraphDB;
     use std::collections::HashMap;
 
     #[test]

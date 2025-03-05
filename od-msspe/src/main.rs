@@ -198,10 +198,7 @@ fn partitioning_sequence(sequence: &str, size: usize, overlap_size: usize) -> Ve
         .collect()
 }
 
-fn get_sequence_on_search_windows(
-    sequence: &str,
-    search_windows_size: usize,
-) -> (String, String) {
+fn get_sequence_on_search_windows(sequence: &str, search_windows_size: usize) -> (String, String) {
     let first = &sequence[..search_windows_size];
     let second = &sequence[sequence.len() - search_windows_size..];
     (first.to_string(), second.to_string())
@@ -834,7 +831,8 @@ fn filter_kmers(stats: Vec<KmerStat>) -> Vec<KmerStat> {
                 && kmer_stat.hairpin_th < PRIMER_MAX_HAIRPIN_TH
                 && kmer_stat.tm_ok
                 && !kmer_stat.runs
-        }).cloned()
+        })
+        .cloned()
         .collect()
 }
 #[derive(Parser, Debug)]
@@ -958,11 +956,13 @@ fn main() -> io::Result<()> {
     log::debug!("Deleted primers: {:?}", deleted_primers);
     let good_delta_g_fwd_primers: Vec<KmerStat> = candidate_primers_fwd
         .iter()
-        .filter(|p| !deleted_primers.contains(p.word.as_str())).cloned()
+        .filter(|p| !deleted_primers.contains(p.word.as_str()))
+        .cloned()
         .collect();
     let good_delta_g_rev_primers: Vec<KmerStat> = candidate_primers_rev
         .iter()
-        .filter(|p| !deleted_primers.contains(p.word.as_str())).cloned()
+        .filter(|p| !deleted_primers.contains(p.word.as_str()))
+        .cloned()
         .collect();
     log::info!(
         "Done filtering out unmatched, primers left fwd={}, rev={}",

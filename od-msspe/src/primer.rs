@@ -28,7 +28,6 @@ impl<'a> PrimerInfo<'a> {
             hairpin_th: 0.0,
         }
     }
-    
     pub(crate) fn reset(&mut self) {
         self.id = "";
         self.tm = 0.0;

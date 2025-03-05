@@ -164,7 +164,7 @@ mod tests {
             CTGAAGCAGTATT,AATTGTGTGGATT\n\
             AGTCCTGCGTGAT,TGGCCTACATCAG\n\
             "
-            .to_string();
+        .to_string();
         let output = "\
             Calculated thermodynamical parameters for dimer:        dS = -75.3988   dH = -25700     dG = -2315.07   t = -35.9834\n\
             SEQ           AG  CTATATCCA\n\

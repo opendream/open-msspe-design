@@ -3,21 +3,15 @@ mod graphdb;
 mod primer;
 
 use crate::delta_g::{run_ntthal, NtthalOptions};
-// TODO: Please check if this is needed
-// use crate::graphdb::GraphDB;
 use crate::primer::{check_primers, CheckPrimerParams, PrimerInfo, DEFAULT_MAX_TM, DEFAULT_MIN_TM};
 use clap::Parser;
 use graphdb::Edge;
 use itertools::Itertools;
 use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
-// TODO: Please check if this is needed
-// use std::arch::aarch64::vabs_f32;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::io::{self, BufReader};
-// TODO: Please check if this is needed
-// use std::iter::Map;
 use std_dev::standard_deviation;
 
 const KMER_SIZE: usize = 13;
@@ -47,7 +41,7 @@ struct SequenceRecord {
 const SEQ_DIR_FWD: u8 = 0x00;
 const SEQ_DIR_REV: u8 = 0x01;
 
-#[derive(Hash, Clone)]
+#[derive(Clone)]
 struct KmerRecord {
     word: String,
     direction: u8,
@@ -56,6 +50,13 @@ struct KmerRecord {
 impl PartialEq for KmerRecord {
     fn eq(&self, other: &Self) -> bool {
         self.word == other.word && self.direction == other.direction
+    }
+}
+
+impl Hash for KmerRecord {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.word.hash(state);
+        self.direction.hash(state);
     }
 }
 
@@ -93,9 +94,7 @@ struct KmerStat {
     self_any_th: f32,
     self_end_th: f32,
     hairpin_th: f32,
-    repeats: bool,
     runs: bool,
-    delta_g: f32,
 }
 
 struct Segment<'a> {
@@ -200,7 +199,7 @@ fn partitioning_sequence(sequence: &str, size: usize, overlap_size: usize) -> Ve
 }
 
 fn get_sequence_on_search_windows(
-    sequence: &String,
+    sequence: &str,
     search_windows_size: usize,
 ) -> (String, String) {
     let first = &sequence[..search_windows_size];
@@ -215,7 +214,7 @@ struct PartitioningOption {
     kmer_size: usize,
 }
 
-fn get_segment_manager(records: &Vec<SequenceRecord>, opt: PartitioningOption) -> SegmentManager {
+fn get_segment_manager(records: &[SequenceRecord], opt: PartitioningOption) -> SegmentManager {
     let mut manager = SegmentManager {
         segments: Vec::new(),
     };
@@ -224,11 +223,11 @@ fn get_segment_manager(records: &Vec<SequenceRecord>, opt: PartitioningOption) -
         panic!("Overlap windows size must be greater or equal than search windows size");
     }
 
-    for (_, record) in records.iter().enumerate() {
+    for record in records.iter() {
         let partitions =
             partitioning_sequence(&record.sequence, opt.segment_size, opt.overlap_size);
         for (j, partition) in partitions.iter().enumerate() {
-            let (start, end) = get_sequence_on_search_windows(&partition, opt.window_size);
+            let (start, end) = get_sequence_on_search_windows(partition, opt.window_size);
             let start_kmers = find_kmers(&start, opt.kmer_size);
             let end_kmers = find_kmers(&end, opt.kmer_size);
             let mut kmers: [Vec<KmerRecord>; 2] = [Vec::new(), Vec::new()];
@@ -268,7 +267,7 @@ fn make_kmer_segments_windows_mapping<'a>(
                 }
                 kmer_segments_mapping
                     .entry(kmer)
-                    .or_insert(Vec::new())
+                    .or_default()
                     .push(segment.index as u32);
             }
         }
@@ -305,7 +304,7 @@ fn find_most_freq_kmer<'a>(
         .iter()
         .max_by_key(|(_, &v)| v)
         .map(|(k, &f)| KmerFrequency {
-            kmer: *k,
+            kmer: k,
             frequency: f,
         })
 }
@@ -386,13 +385,13 @@ mod tests {
         };
         let manager = get_segment_manager(&records, opt);
         assert_eq!(manager.segments.len(), 6);
-        let first_segment = manager.segments.get(0).unwrap();
+        let first_segment = manager.segments.first().unwrap();
         for kmer in first_segment.kmers.iter() {
             for k in kmer.iter() {
                 println!("kmer={}", k.word);
             }
         }
-        assert_eq!(manager.segments.get(0).unwrap().kmers[0].len(), 3);
+        assert_eq!(manager.segments.first().unwrap().kmers[0].len(), 3);
         assert_eq!(manager.segments.get(1).unwrap().kmers[1].len(), 3);
     }
 
@@ -411,14 +410,14 @@ mod tests {
             name: "seq1".to_string(),
             sequence: "ACTGAGGTATTA".to_string(),
         };
-        let seq_2 = SequenceRecord {
+        let seq_2 = &SequenceRecord {
             name: "seq2".to_string(),
             sequence: "ACTGAGGTGGAA".to_string(),
         };
         let manager: SegmentManager = SegmentManager {
             segments: vec![
                 Segment {
-                    sequence: &seq_1,
+                    sequence: seq_1,
                     partition_no: 0,
                     index: 0,
                     kmers: [
@@ -453,7 +452,7 @@ mod tests {
                     ],
                 },
                 Segment {
-                    sequence: &seq_2,
+                    sequence: seq_2,
                     partition_no: 1,
                     index: 1,
                     kmers: [
@@ -670,7 +669,7 @@ mod tests {
         };
 
         let result = find_most_freq_kmer(&manager.segments, 0, HashSet::new());
-        assert_eq!(result.is_some(), true);
+        assert!(result.is_some());
         let kmer_freq = result.unwrap();
         assert_eq!(kmer_freq.kmer.word, "ACT");
         assert_eq!(kmer_freq.frequency, 2);
@@ -731,7 +730,7 @@ fn find_candidates_kmers<'a>(
         }
     }
 
-    if candidate_kmers.len() == 0 {
+    if candidate_kmers.is_empty() {
         return None;
     }
 
@@ -784,36 +783,10 @@ fn get_kmer_stats(kmer_records: Vec<KmerFrequency>) -> Vec<KmerStat> {
                 self_any_th: primer_info.self_any_th,
                 self_end_th: primer_info.self_end_th,
                 hairpin_th: primer_info.hairpin_th,
-                repeats: is_repeats(kmer_freq.kmer.word.clone()),
                 runs: is_run(kmer_freq.kmer.word.clone()),
-                delta_g: 0.0,
             }
         })
         .collect()
-}
-
-fn get_gc_percent(kmer: String) -> f32 {
-    let mut gc_count: f32 = 0.0;
-    for c in kmer.chars() {
-        if c == 'G' || c == 'C' {
-            gc_count += 1.0;
-        }
-    }
-    (gc_count / kmer.len() as f32) * 100.0
-}
-
-fn get_tm(kmer: String) -> f32 {
-    let mut gc_count: f32 = 0.0;
-    let mut at_count: f32 = 0.0;
-    for c in kmer.chars() {
-        if c == 'G' || c == 'C' {
-            gc_count += 1.0;
-        }
-        if c == 'A' || c == 'T' {
-            at_count += 1.0;
-        }
-    }
-    64.9 + (41.0 * (gc_count - 16.4) / (gc_count + at_count))
 }
 
 /**
@@ -837,21 +810,6 @@ fn tm_in_threshold(tm: f32, mean: f32, std: f32) -> bool {
  *
  * For example, ATATATATATGG is too many AT repeats, then return `true`.
  */
-fn is_repeats(kmer: String) -> bool {
-    let kmer_ngrams = kmer.chars().ngrams(2);
-    let mut repeats = 0;
-    let mut last_chunk: Vec<char> = Vec::new();
-    for chunk in kmer_ngrams {
-        if chunk == last_chunk {
-            repeats += 1;
-        } else {
-            repeats = 0;
-        }
-        last_chunk = chunk;
-    }
-    repeats >= 5
-}
-
 fn is_run(kmer: String) -> bool {
     let mut runs = 0;
     let mut last_char = ' ';
@@ -876,8 +834,7 @@ fn filter_kmers(stats: Vec<KmerStat>) -> Vec<KmerStat> {
                 && kmer_stat.hairpin_th < PRIMER_MAX_HAIRPIN_TH
                 && kmer_stat.tm_ok
                 && !kmer_stat.runs
-        })
-        .map(|kmer_stat| kmer_stat.clone())
+        }).cloned()
         .collect()
 }
 #[derive(Parser, Debug)]
@@ -934,9 +891,9 @@ fn main() -> io::Result<()> {
     log::info!("Calculating frequencies of k-mer for all segments...");
     log::debug!("Total segments: {}", segment_manager.segments.len());
     let candidate_kmers_fwd =
-        find_candidates_kmers(&segment_manager, SEQ_DIR_FWD).unwrap_or_else(|| Vec::new());
+        find_candidates_kmers(&segment_manager, SEQ_DIR_FWD).unwrap_or_default();
     let candidate_kmers_rev =
-        find_candidates_kmers(&segment_manager, SEQ_DIR_REV).unwrap_or_else(|| Vec::new());
+        find_candidates_kmers(&segment_manager, SEQ_DIR_REV).unwrap_or_default();
     log::info!(
         "Done calculating, Total candidate k-mers: fwd: {}, rev: {}",
         candidate_kmers_fwd.len(),
@@ -972,8 +929,8 @@ fn main() -> io::Result<()> {
         for edge in edges {
             let dg = edge.get_dg();
             if dg < -9000.0 {
-                candidate_unusable_edges.push(&edge);
-                let (a, b) = graph.get_edge_nodes(&edge);
+                candidate_unusable_edges.push(edge);
+                let (a, b) = graph.get_edge_nodes(edge);
                 log::debug!("Edge: {} -> {} dg={}", a.id, b.id, dg);
                 *primers_total_low_dg.entry(a.id.clone()).or_insert(0) += 1;
                 *primers_total_low_dg.entry(b.id.clone()).or_insert(0) += 1;
@@ -1001,13 +958,11 @@ fn main() -> io::Result<()> {
     log::debug!("Deleted primers: {:?}", deleted_primers);
     let good_delta_g_fwd_primers: Vec<KmerStat> = candidate_primers_fwd
         .iter()
-        .filter(|p| !deleted_primers.contains(p.word.as_str()))
-        .map(|p| p.clone())
+        .filter(|p| !deleted_primers.contains(p.word.as_str())).cloned()
         .collect();
     let good_delta_g_rev_primers: Vec<KmerStat> = candidate_primers_rev
         .iter()
-        .filter(|p| !deleted_primers.contains(p.word.as_str()))
-        .map(|p| p.clone())
+        .filter(|p| !deleted_primers.contains(p.word.as_str())).cloned()
         .collect();
     log::info!(
         "Done filtering out unmatched, primers left fwd={}, rev={}",
@@ -1019,7 +974,7 @@ fn main() -> io::Result<()> {
     log::info!("Outputting primers...");
     let output_file = args.output.to_string();
     let mut writer = csv::Writer::from_path(output_file)?;
-    writer.write_record(&["direction", "name", "primers", "gc", "avg", "std", "tm"])?;
+    writer.write_record(["direction", "name", "primers", "gc", "avg", "std", "tm"])?;
     let candidate_primers = vec![good_delta_g_fwd_primers, good_delta_g_rev_primers];
     for candidates in candidate_primers {
         for (idx, primer) in candidates.iter().enumerate() {
@@ -1028,7 +983,7 @@ fn main() -> io::Result<()> {
             } else {
                 "R"
             };
-            writer.write_record(&[
+            writer.write_record([
                 direction,
                 &format!("Primer_{}_{}", idx, direction),
                 &*primer.word,

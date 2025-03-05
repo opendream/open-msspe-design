@@ -10,7 +10,6 @@ pub struct GraphDB {
 pub struct Node {
     pub id: String,
     edges: HashSet<String>,
-    deleted: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -36,7 +35,6 @@ impl GraphDB {
         self.nodes.entry(id.clone()).or_insert(Node {
             id: id.clone(),
             edges: HashSet::new(),
-            deleted: false,
         });
     }
 
@@ -76,39 +74,9 @@ impl GraphDB {
             Some(node) => node
                 .edges
                 .iter()
-                .map(|edge_id| self.get_edge(edge_id))
-                .filter(|edge| edge.is_some())
-                .map(|edge| edge.unwrap())
+                .filter_map(|edge_id| self.get_edge(edge_id))
                 .collect(),
             None => Vec::new(),
-        }
-    }
-
-    pub fn delete_node(&mut self, node_id: &String) {
-        let node = self.nodes.get_mut(node_id).unwrap();
-        let edge_ids = node.edges.iter();
-        for edge_id in edge_ids {
-            match self.edges.iter().find(|edge| edge.id.eq(edge_id)) {
-                Some(e) => {
-                    self.edges.replace(Edge {
-                        id: e.id.clone(),
-                        attributes: e.attributes.clone(),
-                        deleted: true,
-                    });
-                }
-                None => (),
-            }
-        }
-        node.deleted = true;
-    }
-
-    pub fn get_other_end(&self, edge: &Edge, node_id: &String) -> Option<&Node> {
-        let edge_id = &edge.id;
-        let ids: Vec<&str> = edge_id.split(":").collect();
-        let other_end = ids.iter().find(|id| id == &node_id);
-        match other_end {
-            Some(id) => self.get_node(&id.to_string()),
-            None => None,
         }
     }
 
@@ -137,7 +105,7 @@ impl std::hash::Hash for Edge {
 
 #[cfg(test)]
 mod tests {
-    use crate::graphdb::{get_edge_id, GraphDB};
+    use crate::graphdb::{GraphDB};
     use std::collections::HashMap;
 
     #[test]
@@ -202,27 +170,5 @@ mod tests {
 
         let b_edges = graph.get_edges_for_node(&"B".to_string());
         assert_eq!(b_edges.len(), 1);
-    }
-
-    #[test]
-    pub fn test_delete_node() {
-        let mut graph = GraphDB::new();
-        let id_a = "A".to_string();
-        let id_b = "B".to_string();
-        let id_c = "C".to_string();
-        graph.add_node(id_a.clone());
-        graph.add_node(id_b.clone());
-        graph.add_node(id_c.clone());
-        graph.add_edge(&"A".to_string(), &"B".to_string(), HashMap::new());
-        graph.add_edge(&"A".to_string(), &"C".to_string(), HashMap::new());
-        graph.delete_node(&id_a);
-
-        let node_a = graph.get_node(&id_a).unwrap();
-        assert!(node_a.deleted);
-        assert_eq!(graph.get_edges_for_node(&id_a).len(), 0);
-
-        let edge_ab_id = get_edge_id(&id_a, &id_b);
-        let edge_a = graph.edges.iter().find(|e| e.id.eq(&edge_ab_id)).unwrap();
-        assert_eq!(edge_a.deleted, true);
     }
 }

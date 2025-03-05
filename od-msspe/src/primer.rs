@@ -4,7 +4,6 @@ use std::process::{Command, Stdio};
 use std::string::ParseError;
 
 #[doc = "Find primer related values like Tm, Hairpin, Dimers using Primer3"]
-
 pub const DEFAULT_MIN_TM: f32 = 30.0;
 pub const DEFAULT_MAX_TM: f32 = 60.0;
 
@@ -29,9 +28,7 @@ impl<'a> PrimerInfo<'a> {
             hairpin_th: 0.0,
         }
     }
-}
-
-impl<'a> PrimerInfo<'a> {
+    
     pub(crate) fn reset(&mut self) {
         self.id = "";
         self.tm = 0.0;
@@ -85,7 +82,7 @@ pub fn parse_primer3_output(result: &str) -> Result<Vec<PrimerInfo<'static>>, Pa
     for line in result.lines() {
         match line {
             "=" => {
-                if primer_info.id == "" {
+                if primer_info.id.is_empty() {
                     break;
                 }
                 output.push(primer_info.clone());
@@ -150,7 +147,7 @@ pub fn check_primers(
 ) -> Result<Vec<PrimerInfo<'static>>, std::io::Error> {
     let mut primer_info_list = Vec::new();
 
-    let input = format_primer3_input(&primers, &params);
+    let input = format_primer3_input(primers, &params);
     let primer3_core = current_dir().unwrap().join("bin/primer3_core");
     let mut cmd = Command::new(primer3_core)
         .stdin(Stdio::piped())

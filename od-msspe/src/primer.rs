@@ -147,7 +147,17 @@ pub fn check_primers(
     let mut primer_info_list = Vec::new();
 
     let input = format_primer3_input(primers, &params);
-    let primer3_core = current_dir().unwrap().join("bin/primer3_core");
+
+    // Check if macOS, use default primer3_core, else use primer3_core from system.
+    let mut primer3_core: String = String::from("primer3_core");
+    if cfg!(target_os = "macos") {
+        let path = current_dir()?.join("bin/primer3_core");
+        // test for executable
+        if path.exists() {
+            primer3_core = path.into_os_string().into_string().unwrap();
+        }
+    }
+
     let mut cmd = Command::new(primer3_core)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

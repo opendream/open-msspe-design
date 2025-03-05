@@ -72,7 +72,18 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
     // Execute ntthal with the given sequences and conditions
     log::trace!("Calculating ΔG for {} sequences", primers.len());
     let path = format!("{}/primer3_config/", current_dir()?.display());
-    let mut cmd = Command::new("./bin/ntthal")
+
+    // Check if macOS, use default primer3_core, else use primer3_core from system.
+    let mut ntthal: String = String::from("ntthal");
+    if cfg!(target_os = "macos") {
+        let path = current_dir()?.join("bin/ntthal");
+        // test for executable
+        if path.exists() {
+            ntthal = path.into_os_string().into_string().unwrap();
+        }
+    }
+    
+    let mut cmd = Command::new(ntthal)
         .args([
             "-a",
             "ANY",

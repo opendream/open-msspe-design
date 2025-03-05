@@ -1,5 +1,7 @@
 # Open-MSSPE-Design
 
+![Build status](https://github.com/opendream/open-msspe-design/actions/workflows/open-msspe-design.yml/badge.svg)
+
 Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic Sequencing with Spiked Primer Enrichment (MSSPE). This approach supports viral diagnostics and genomic surveillance by enriching viral sequences during sequencing, as described in [Deng et al. (2020)](https://doi.org/10.1038/s41564-019-0637-9), and openly implemented in [nf-msspe](https://github.com/MaestSi/nf-msspe) by Simon Maestri. This implementation introduces significant revisions to optimize and automate the primer design process.
 
 ---

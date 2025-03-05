@@ -1,8 +1,8 @@
+use crate::graphdb::{Edge, GraphDB};
+use std::collections::HashMap;
 use std::env::current_dir;
-use std::collections::{HashMap};
 use std::io::Write;
 use std::process::{Command, Stdio};
-use crate::graphdb::{Edge, GraphDB};
 
 impl Edge {
     pub fn get_dg(&self) -> f32 {
@@ -35,13 +35,12 @@ pub fn parse_ntthal_output(input: &String, output: String, delta_g_threshold: f3
                             attrs.insert("dg".to_string(), format!("{:.2}", dg));
                             graph.add_edge(&primer_a, &primer_b, attrs);
                         }
-                    },
+                    }
                     None => {
                         log::debug!("cannot parse output line: {}", output_line);
-                        
-                    },
+                    }
                 }
-            },
+            }
             None => {}
         }
         // flush to next group
@@ -71,13 +70,14 @@ mod tests {
 
     #[test]
     pub fn test_format_ntthal_input() {
-        let primers = vec!["GAAGCAGTATTTT".to_string(),"AATATAGAGGCTG".to_string()];
+        let primers = vec!["GAAGCAGTATTTT".to_string(), "AATATAGAGGCTG".to_string()];
         let result = format_ntthal_input(&primers);
         let expected = "\
             GAAGCAGTATTTT,GAAGCAGTATTTT\n\
             GAAGCAGTATTTT,AATATAGAGGCTG\n\
             AATATAGAGGCTG,GAAGCAGTATTTT\n\
-            AATATAGAGGCTG,AATATAGAGGCTG".to_string();
+            AATATAGAGGCTG,AATATAGAGGCTG"
+            .to_string();
         assert_eq!(result, expected);
     }
 
@@ -89,7 +89,8 @@ mod tests {
             CTGAAGCAGTATT,GCATCTTTCCCTT\n\
             CTGAAGCAGTATT,AATTGTGTGGATT\n\
             AGTCCTGCGTGAT,TGGCCTACATCAG\n\
-            ".to_string();
+            "
+        .to_string();
         let output = "\
             Calculated thermodynamical parameters for dimer:        dS = -75.3988   dH = -25700     dG = -2315.07   t = -35.9834\n\
             SEQ           AG  CTATATCCA\n\
@@ -166,20 +167,28 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
     let path = format!("{}/primer3_config/", current_dir()?.display());
     let mut cmd = Command::new("./bin/ntthal")
         .args(&[
-            "-a", "ANY",
-            "-mv", format!("{:.2}", opts.mv).as_str(),
-            "-dv", format!("{:.2}", opts.dv).as_str(),
-            "-n", format!("{:.2}", opts.dntp).as_str(),
-            "-d", format!("{:.2}", opts.conc).as_str(),
-            "-t", format!("{:.2}", opts.t).as_str(),
-            "-path", &*path,
+            "-a",
+            "ANY",
+            "-mv",
+            format!("{:.2}", opts.mv).as_str(),
+            "-dv",
+            format!("{:.2}", opts.dv).as_str(),
+            "-n",
+            format!("{:.2}", opts.dntp).as_str(),
+            "-d",
+            format!("{:.2}", opts.conc).as_str(),
+            "-t",
+            format!("{:.2}", opts.t).as_str(),
+            "-path",
+            &*path,
             "-i",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
 
-    log::debug!("Executing ntthal with args: \
+    log::debug!(
+        "Executing ntthal with args: \
         -a ANY \
         -mv {:.2} \
         -dv {:.2} \
@@ -187,14 +196,22 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
         -d {:.2} \
         -t {:.2} \
         -path {}",
-        opts.mv, opts.dv, opts.dntp, opts.conc, opts.t, path);
+        opts.mv,
+        opts.dv,
+        opts.dntp,
+        opts.conc,
+        opts.t,
+        path
+    );
 
     // Write the input sequences to the stdin of the process
     let input = format_ntthal_input(&primers);
     let input_clone = input.clone();
     if let Some(mut stdin) = cmd.stdin.take() {
         std::thread::spawn(move || {
-            stdin.write_all(input_clone.as_bytes()).expect("failed to write to stdin");
+            stdin
+                .write_all(input_clone.as_bytes())
+                .expect("failed to write to stdin");
         });
     }
     log::debug!("Done writing ntthal input");
@@ -202,7 +219,10 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
     // Read the output from the stdout of the process
     let output = cmd.wait_with_output()?;
     if !output.status.success() {
-        return Err(std::io::Error::new(std::io::ErrorKind::Other, "ntthal process failed"));
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "ntthal process failed",
+        ));
     }
 
     // Process the output as needed

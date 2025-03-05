@@ -1,5 +1,5 @@
 use std::env::current_dir;
-use std::io::{Write};
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::string::ParseError;
 
@@ -20,7 +20,7 @@ pub struct PrimerInfo<'a> {
 
 impl<'a> PrimerInfo<'a> {
     pub(crate) fn new() -> PrimerInfo<'a> {
-        PrimerInfo{
+        PrimerInfo {
             id: "",
             tm: 0.0,
             gc: 0.0,
@@ -86,20 +86,30 @@ pub fn parse_primer3_output(result: &str) -> Result<Vec<PrimerInfo<'static>>, Pa
         match line {
             "=" => {
                 if primer_info.id == "" {
-                    break
+                    break;
                 }
                 output.push(primer_info.clone());
                 primer_info.reset();
-            },
+            }
             _ => {
                 let key_value: Vec<&str> = line.split("=").collect();
                 match key_value[0] {
-                    "SEQUENCE_ID" => primer_info.id = Box::leak(key_value[1].to_string().into_boxed_str()),
+                    "SEQUENCE_ID" => {
+                        primer_info.id = Box::leak(key_value[1].to_string().into_boxed_str())
+                    }
                     "PRIMER_LEFT_0_TM" => primer_info.tm = key_value[1].parse::<f32>().unwrap(),
-                    "PRIMER_LEFT_0_GC_PERCENT" => primer_info.gc = key_value[1].parse::<f32>().unwrap(),
-                    "PRIMER_LEFT_0_SELF_ANY_TH" => primer_info.self_any_th = key_value[1].parse::<f32>().unwrap(),
-                    "PRIMER_LEFT_0_SELF_END_TH" => primer_info.self_end_th = key_value[1].parse::<f32>().unwrap(),
-                    "PRIMER_LEFT_0_HAIRPIN_TH" => primer_info.hairpin_th = key_value[1].parse::<f32>().unwrap(),
+                    "PRIMER_LEFT_0_GC_PERCENT" => {
+                        primer_info.gc = key_value[1].parse::<f32>().unwrap()
+                    }
+                    "PRIMER_LEFT_0_SELF_ANY_TH" => {
+                        primer_info.self_any_th = key_value[1].parse::<f32>().unwrap()
+                    }
+                    "PRIMER_LEFT_0_SELF_END_TH" => {
+                        primer_info.self_end_th = key_value[1].parse::<f32>().unwrap()
+                    }
+                    "PRIMER_LEFT_0_HAIRPIN_TH" => {
+                        primer_info.hairpin_th = key_value[1].parse::<f32>().unwrap()
+                    }
                     _ => (),
                 }
             }
@@ -134,7 +144,10 @@ pub fn format_primer3_input(primers: &[String], params: &CheckPrimerParams) -> S
 }
 
 /// Call ./bin/primer3_core and provide input as pipeline.
-pub fn check_primers(primers: &[String], params: CheckPrimerParams) -> Result<Vec<PrimerInfo<'static>>, std::io::Error> {
+pub fn check_primers(
+    primers: &[String],
+    params: CheckPrimerParams,
+) -> Result<Vec<PrimerInfo<'static>>, std::io::Error> {
     let mut primer_info_list = Vec::new();
 
     let input = format_primer3_input(&primers, &params);
@@ -202,7 +215,9 @@ mod tests {
             max_tm: DEFAULT_MAX_TM,
         };
         let result = format_primer3_input(&primers, &params);
-        assert_eq!(result, "\
+        assert_eq!(
+            result,
+            "\
             SEQUENCE_ID=AGCCCGTGTAAAC\n\
             SEQUENCE_PRIMER=AGCCCGTGTAAAC\n\
             PRIMER_TASK=check_primers\n\
@@ -210,7 +225,8 @@ mod tests {
             PRIMER_MIN_TM=30.00\n\
             PRIMER_MAX_TM=60.00\n\
             PRIMER_PICK_ANYWAY=1\n\
-            =\n")
+            =\n"
+        )
     }
 
     #[test]

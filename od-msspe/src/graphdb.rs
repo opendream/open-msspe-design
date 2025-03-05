@@ -33,14 +33,19 @@ impl GraphDB {
     }
 
     pub fn add_node(&mut self, id: String) {
-        self.nodes.entry(id.clone()).or_insert(Node{
+        self.nodes.entry(id.clone()).or_insert(Node {
             id: id.clone(),
             edges: HashSet::new(),
             deleted: false,
         });
     }
 
-    pub fn add_edge(&mut self, id_a: &String, id_b: &String, attributes: HashMap<String, String>) -> Edge {
+    pub fn add_edge(
+        &mut self,
+        id_a: &String,
+        id_b: &String,
+        attributes: HashMap<String, String>,
+    ) -> Edge {
         let id = get_edge_id(id_a, id_b);
         self.edges.insert(Edge {
             id: id.clone(),
@@ -61,7 +66,9 @@ impl GraphDB {
     }
 
     pub fn get_edge(&self, id: &String) -> Option<&Edge> {
-        self.edges.iter().find(|edge| !edge.deleted && edge.id.eq(id))
+        self.edges
+            .iter()
+            .find(|edge| !edge.deleted && edge.id.eq(id))
     }
 
     pub fn get_edges_for_node(&self, node_id: &String) -> Vec<&Edge> {
@@ -83,12 +90,12 @@ impl GraphDB {
         for edge_id in edge_ids {
             match self.edges.iter().find(|edge| edge.id.eq(edge_id)) {
                 Some(e) => {
-                    self.edges.replace(Edge{
+                    self.edges.replace(Edge {
                         id: e.id.clone(),
                         attributes: e.attributes.clone(),
                         deleted: true,
                     });
-                },
+                }
                 None => (),
             }
         }
@@ -130,8 +137,8 @@ impl std::hash::Hash for Edge {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
     use crate::graphdb::{get_edge_id, GraphDB};
+    use std::collections::HashMap;
 
     #[test]
     pub fn test_add_node() {
@@ -215,10 +222,7 @@ mod tests {
         assert_eq!(graph.get_edges_for_node(&id_a).len(), 0);
 
         let edge_ab_id = get_edge_id(&id_a, &id_b);
-        let edge_a = graph.edges
-            .iter()
-            .find(|e| e.id.eq(&edge_ab_id))
-            .unwrap();
+        let edge_a = graph.edges.iter().find(|e| e.id.eq(&edge_ab_id)).unwrap();
         assert_eq!(edge_a.deleted, true);
     }
 }

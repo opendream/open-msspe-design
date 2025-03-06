@@ -19,5 +19,5 @@ jobs:
       - name: Compile and Test Primer3
         run: |
           cd src
-          mingw32-make TESTOPTS=--windows
+          mingw32-make CC=gcc CXX=gcc TESTOPTS=--windows
         shell: cmd

@@ -14,8 +14,12 @@ jobs:
           cd primer3
           git checkout tags/v2.3.7
 
-      - name: Install TDM-GCC via Chocolatey
-        run: choco install tdm-gcc -y
+      - name: Download TDM-GCC Installer
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe" -OutFile "TDM-GCC-Installer.exe"
+      - name: Install TDM-GCC Silently
+        run: |
+          Start-Process -FilePath ".\TDM-GCC-Installer.exe" -ArgumentList "/S" -Wait
 
       - name: (Optional) Install ActiveState Perl via Chocolatey
         run: choco install activestateperl -y

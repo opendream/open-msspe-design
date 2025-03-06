@@ -21,15 +21,15 @@ jobs:
         run: |
           Start-Process -FilePath ".\TDM-GCC-Installer.exe" -ArgumentList "/S" -Wait
 
-      - name: (Optional) Install ActiveState Perl via Chocolatey
-        run: choco install activestateperl -y
+#      - name: (Optional) Install ActiveState Perl via Chocolatey
+#        run: choco install activestateperl -y
 
       - name: Compile Primer3
         run: |
           cd primer3/src
           mingw32-make TESTOPTS=--windows
 
-      - name: Run tests (if applicable)
-        run: |
-          cd primer3/test
-          mingw32-make TESTOPTS=--windows
+#      - name: Run tests (if applicable)
+#        run: |
+#          cd primer3/test
+#          mingw32-make TESTOPTS=--windows

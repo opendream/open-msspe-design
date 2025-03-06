@@ -16,8 +16,14 @@ jobs:
           repository: primer3-org/primer3
           ref: v2.3.7
 
+      - name: Check Compiler
+        run: |
+          gcc --version
+          g++ --version
+        shell: cmd
+
       - name: Compile and Test Primer3
         run: |
           cd src
-          mingw32-make CC=gcc CXX=gcc TESTOPTS=--windows
+          mingw32-make CC=gcc COMPILE.c="gcc $(CFLAGS) -c" TESTOPTS=--windows
         shell: cmd

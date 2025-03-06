@@ -17,19 +17,12 @@ jobs:
       - name: Download TDM-GCC Installer
         run: |
           Invoke-WebRequest -Uri "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe" -OutFile "TDM-GCC-Installer.exe"
+
       - name: Install TDM-GCC Silently
         run: |
           Start-Process -FilePath ".\TDM-GCC-Installer.exe" -ArgumentList "/S" -Wait
 
-#      - name: (Optional) Install ActiveState Perl via Chocolatey
-#        run: choco install activestateperl -y
-
       - name: Compile Primer3
         run: |
           cd primer3/src
-          mingw32-make TESTOPTS=--windows
-
-#      - name: Run tests (if applicable)
-#        run: |
-#          cd primer3/test
-#          mingw32-make TESTOPTS=--windows
+          mingw32-make TESTOPTS=--windows CC=gcc

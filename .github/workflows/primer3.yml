@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  build-windows:
+  build-Primer3:
     runs-on: windows-latest
     steps:
       - name: Checkout Primer3 Repository

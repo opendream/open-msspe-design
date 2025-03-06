@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: primer3-org/primer3
-          ref: v2.3.7
+          ref: v2.6.1
 
       - name: Check Compiler
         run: |
@@ -25,5 +25,5 @@ jobs:
       - name: Compile and Test Primer3
         run: |
           cd src
-          mingw32-make CC=gcc COMPILE.c="gcc $(CFLAGS) -c" TESTOPTS=--windows
+          mingw32-make TESTOPTS=--windows
         shell: cmd

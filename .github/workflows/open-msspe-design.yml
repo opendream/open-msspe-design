@@ -29,6 +29,8 @@ jobs:
         run: rustup toolchain install stable
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: od-msspe
 
       - name: Checking formatting
         run: cargo fmt --check --manifest-path od-msspe/Cargo.toml

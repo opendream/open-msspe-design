@@ -45,6 +45,7 @@ jobs:
         uses: Icelk/rustdoc-link-check@v2
         with:
           private: true
+          working-directory: od-msspe
 
       - name: Testing project
         run: cargo test --manifest-path od-msspe/Cargo.toml
@@ -71,6 +72,8 @@ jobs:
         run: rustup toolchain install stable --profile minimal
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: od-msspe
 
       - name: Build
         run: cargo build --verbose --manifest-path od-msspe/Cargo.toml

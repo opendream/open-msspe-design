@@ -1,0 +1,31 @@
+name: Build and Test Primer3 on Windows
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Primer3 repository
+        run: |
+          git clone https://github.com/primer3-org/primer3.git
+          cd primer3
+          git checkout tags/v2.3.7
+
+      - name: Install TDM-GCC via Chocolatey
+        run: choco install tdm-gcc -y
+
+      - name: (Optional) Install ActiveState Perl via Chocolatey
+        run: choco install activestateperl -y
+
+      - name: Compile Primer3
+        run: |
+          cd primer3/src
+          mingw32-make TESTOPTS=--windows
+
+      - name: Run tests (if applicable)
+        run: |
+          cd primer3/test
+          mingw32-make TESTOPTS=--windows

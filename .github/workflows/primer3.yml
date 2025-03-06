@@ -2,27 +2,28 @@ name: Build and Test Primer3 on Windows
 
 on:
   push:
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout Primer3 repository
-        run: |
-          git clone https://github.com/primer3-org/primer3.git
-          cd primer3
-          git checkout tags/v2.3.7
+        uses: actions/checkout@v4
+        with:
+          repository: primer3-org/primer3
+          ref: v2.3.7
 
-      - name: Download TDM-GCC Installer
-        run: |
-          Invoke-WebRequest -Uri "https://github.com/jmeubank/tdm-gcc/releases/download/v10.3.0-tdm64-2/tdm64-gcc-10.3.0-2.exe" -OutFile "TDM-GCC-Installer.exe"
-
-      - name: Install TDM-GCC Silently
-        run: |
-          Start-Process -FilePath ".\TDM-GCC-Installer.exe" -ArgumentList "/S" -Wait
-
-      - name: Compile Primer3
+      - name: Compile and Test Primer3
         run: |
           cd primer3/src
-          mingw32-make TESTOPTS=--windows CC=gcc
+          mingw32-make TESTOPTS=--windows
+        shell: cmd
+
+      - name: Verify Installation
+        run: |
+          gcc --version
+          mingw32-make --version
+        shell: cmd

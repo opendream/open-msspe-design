@@ -10,7 +10,7 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - name: Checkout Primer3 repository
+      - name: Checkout Primer3 Repository
         uses: actions/checkout@v4
         with:
           repository: primer3-org/primer3
@@ -18,12 +18,6 @@ jobs:
 
       - name: Compile and Test Primer3
         run: |
-          cd primer3/src
+          cd src
           mingw32-make TESTOPTS=--windows
-        shell: cmd
-
-      - name: Verify Installation
-        run: |
-          gcc --version
-          mingw32-make --version
         shell: cmd

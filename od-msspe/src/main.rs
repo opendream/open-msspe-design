@@ -4,7 +4,7 @@ mod delta_g;
 mod graphdb;
 mod primer;
 
-use crate::config::{PrimerConfig, ProgramConfig};
+use crate::config::{find_executable, PrimerConfig, ProgramConfig};
 use crate::constants::{SEQ_DIR_FWD, SEQ_DIR_REV};
 use crate::delta_g::{run_ntthal, NtthalOptions};
 use crate::primer::{check_primers, CheckPrimerParams, PrimerInfo};
@@ -359,13 +359,18 @@ fn find_candidates_kmers<'a>(
     )
 }
 
-fn get_kmer_stats(kmer_records: Vec<KmerFrequency>, config: PrimerConfig) -> Vec<KmerStat> {
+fn get_kmer_stats(
+    kmer_records: Vec<KmerFrequency>,
+    program_config: ProgramConfig,
+) -> Vec<KmerStat> {
+    let primer_config = &program_config.primer_config;
     // first, finding the threshold for Tm
     let primers: Vec<String> = kmer_records.iter().map(|k| k.kmer.word.clone()).collect();
 
     let params = CheckPrimerParams {
-        min_tm: config.min_tm,
-        max_tm: config.max_tm,
+        min_tm: primer_config.min_tm,
+        max_tm: primer_config.max_tm,
+        primer3_path: program_config.primer3_path,
     };
     let check_primers_result = check_primers(&primers, params);
     if check_primers_result.is_err() {
@@ -467,7 +472,7 @@ fn filter_kmers(stats: Vec<KmerStat>, program_config: ProgramConfig) -> Vec<Kmer
 
 fn main() -> io::Result<()> {
     env_logger::init();
-
+    
     let args = Args::parse();
     let filename = args.input.to_string();
     let output_file = args.output.to_string();
@@ -481,7 +486,22 @@ fn main() -> io::Result<()> {
         max_hairpin_tm: args.max_hairpin_tm,
     };
 
+    let is_ntthal_path_default = args.ntthal == config::DEFAULT_NTTHAL_PATH;
+    let is_primer3_path_default = args.primer3 == config::DEFAULT_PRIMER3_PATH;
+    let ntthal_path = find_executable(args.ntthal.as_str(), !is_ntthal_path_default);
+    let primer3_path = find_executable(args.primer3.as_str(), !is_primer3_path_default);
+    // check if both ntthal and primer3 are available
+    if ntthal_path.is_none() {
+        panic!("Binary ntthal({}) not found in the system. Make sure program is installed and specify the path with --ntthal", args.ntthal);
+    }
+    if primer3_path.is_none() {
+        panic!("Binary primer3({}) not found in the system. Make sure program is installed and specify the path with --primer3", args.ntthal);
+    }
+
     let program_config = ProgramConfig {
+        ntthal_path: ntthal_path.unwrap().to_string(),
+        primer3_path: primer3_path.unwrap().to_string(),
+
         max_iterations: args.max_iterations,
         max_mismatch_segments: args.max_mismatch_segments,
 
@@ -556,8 +576,8 @@ fn main() -> io::Result<()> {
 
     // 4. Filtering out unmatched criteria
     log::info!("Filtering out unmatched criteria (Tm and >5nt repeats, runs...)");
-    let kmer_stats_fwd = get_kmer_stats(candidate_kmers_fwd, primer_config.clone());
-    let kmer_stats_rev = get_kmer_stats(candidate_kmers_rev, primer_config.clone());
+    let kmer_stats_fwd = get_kmer_stats(candidate_kmers_fwd, program_config.clone());
+    let kmer_stats_rev = get_kmer_stats(candidate_kmers_rev, program_config.clone());
     let candidate_primers_fwd: Vec<KmerStat> = match program_config.keep_all {
         true => kmer_stats_fwd,
         false => filter_kmers(kmer_stats_fwd, program_config.clone()),

@@ -1,4 +1,5 @@
-use crate::constants::{
+use std::path::Path;
+pub(crate) use crate::constants::{
     ANNEALING_TEMP, DEFAULT_NTTHAL_PATH, DEFAULT_PRIMER3_PATH, DELTA_G_THRESHOLD, DNA_CONC,
     DNTP_CONC, DV_CONC, KMER_SIZE, MAX_ITERATIONS, MAX_MISMATCH_SEGMENTS, MV_CONC, OVERLAP_SIZE,
     PRIMER_MAX_HAIRPIN_TH, PRIMER_MAX_SELF_ANY_TH, PRIMER_MAX_SELF_END_TH, PRIMER_MAX_TM,
@@ -129,6 +130,9 @@ pub struct PrimerConfig {
 
 #[derive(Clone)]
 pub struct ProgramConfig {
+    pub ntthal_path: String,
+    pub primer3_path: String,
+
     pub max_iterations: usize,
     pub max_mismatch_segments: usize,
 
@@ -140,4 +144,29 @@ pub struct ProgramConfig {
     pub do_align: bool,
 
     pub(crate) primer_config: PrimerConfig,
+}
+
+pub fn find_executable(name: &str, exact: bool) -> Option<String> {
+    // use provided path if it exists
+    let path = Path::new(name);
+    if std::fs::metadata(path).is_ok() {
+        return Some(path.to_str().unwrap().to_string());
+    }
+
+    if exact {
+        return None;
+    }
+
+    // concat paths with local bin in "./bin" directory
+    let paths = format!("{}:./bin", std::env::var("PATH").unwrap());
+    log::debug!("paths: {}", paths);
+    for path in paths.split(':') {
+        let path = Path::new(path).join(name);
+        log::debug!("path: {:?}", path);
+        if std::fs::metadata(&path).is_ok() {
+            return Some(path.to_str().unwrap().to_string());
+        }
+    }
+
+    None
 }

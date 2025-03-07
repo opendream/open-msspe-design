@@ -90,16 +90,7 @@ pub fn run_ntthal(
     let path = format!("{}/primer3_config/", current_dir()?.display());
 
     // Check if macOS, use default primer3_core, else use primer3_core from system.
-    let mut ntthal: String = String::from("ntthal");
-    if cfg!(target_os = "macos") {
-        let path = current_dir()?.join("bin/ntthal");
-        // test for executable
-        if path.exists() {
-            ntthal = path.into_os_string().into_string().unwrap();
-        }
-    }
-
-    let mut cmd = Command::new(ntthal)
+    let mut cmd = Command::new(program_config.clone().ntthal_path)
         .args([
             "-a",
             "ANY",
@@ -174,6 +165,8 @@ mod tests {
     pub fn test_format_ntthal_input() {
         let primers = vec!["GAAGCAGTATTTT".to_string(), "AATATAGAGGCTG".to_string()];
         let program_config = ProgramConfig {
+            ntthal_path: "".to_string(),
+            primer3_path: "".to_string(),
             max_iterations: 0,
             max_mismatch_segments: 0,
             keep_all: false,

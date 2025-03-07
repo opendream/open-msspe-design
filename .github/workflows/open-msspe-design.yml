@@ -1,4 +1,4 @@
-name: Check and compile
+name: Build
 
 on:
   push:
@@ -8,42 +8,76 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
+  check-linux-macos:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checking out sources
         uses: actions/checkout@v4
+
       - name: Installing Primer3
-        run: sudo apt install -y primer3
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            sudo apt install -y primer3;
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            brew install primer3;
+          fi
+
       - name: Installing Rust toolchain
         run: rustup toolchain install stable
+
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: od-msspe
+
       - name: Checking formatting
         run: cargo fmt --check --manifest-path od-msspe/Cargo.toml
+
       - name: Checking lints
         run: cargo clippy --manifest-path od-msspe/Cargo.toml --all-targets -- -D warnings
+
       - name: Checking lints with all features
         run: cargo clippy --manifest-path od-msspe/Cargo.toml --all-targets --all-features -- -D warnings
+
       - name: Checking doc references
         uses: Icelk/rustdoc-link-check@v2
         with:
           private: true
+          working-directory: od-msspe
+
       - name: Testing project
         run: cargo test --manifest-path od-msspe/Cargo.toml
 
-  build:
-    needs: [check]
-    runs-on: ubuntu-latest
-
+  build-linux-macos:
+    needs: [check-linux-macos]
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-    - name: Checking out sources
-      uses: actions/checkout@v4
-    - name: Installing Primer3
-      run: sudo apt install -y primer3
-    - name: Installing Rust toolchain
-      run: rustup toolchain install stable --profile minimal
-    - uses: Swatinem/rust-cache@v2
-    - name: Build
-      run: cargo build --verbose --manifest-path od-msspe/Cargo.toml
-    - name: Run tests
-      run: cargo test --verbose --manifest-path od-msspe/Cargo.toml
+      - name: Checking out sources
+        uses: actions/checkout@v4
+
+      - name: Installing Primer3
+        run: |
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            sudo apt install -y primer3;
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            brew install primer3;
+          fi
+
+      - name: Installing Rust toolchain
+        run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: od-msspe
+
+      - name: Build
+        run: cargo build --verbose --manifest-path od-msspe/Cargo.toml
+
+      - name: Run tests
+        run: cargo test --verbose --manifest-path od-msspe/Cargo.toml
+        

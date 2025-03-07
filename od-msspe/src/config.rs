@@ -17,47 +17,48 @@ pub struct Args {
     #[arg(short, long)]
     pub output: String,
 
-    #[arg(long, default_value_t = KMER_SIZE)]
+    #[arg(long, env = "KMER_SIZE", default_value_t = KMER_SIZE)]
     pub kmer_size: usize,
 
-    #[arg(long, default_value_t = WINDOW_SIZE)]
+    #[arg(long, env = "WINDOW_SIZE", default_value_t = WINDOW_SIZE)]
     pub window_size: usize,
 
-    #[arg(long, default_value_t = OVERLAP_SIZE)]
+    #[arg(long, env = "OVERLAP_SIZE", default_value_t = OVERLAP_SIZE)]
     pub overlap_size: usize,
-    #[arg(long, default_value_t = MAX_MISMATCH_SEGMENTS)]
+    #[arg(long, env = "MAX_MISMATCH_SEGMENTS", default_value_t = MAX_MISMATCH_SEGMENTS)]
     pub max_mismatch_segments: usize,
-    #[arg(long, default_value_t = MAX_ITERATIONS)]
+    #[arg(long, env = "MAX_ITERATIONS", default_value_t = MAX_ITERATIONS)]
     pub max_iterations: usize,
-    #[arg(long, default_value_t = SEARCH_WINDOWS_SIZE)]
+    #[arg(long, env = "SEARCH_WINDOWS_SIZE", default_value_t = SEARCH_WINDOWS_SIZE)]
     pub search_windows_size: usize,
-    #[arg(long, default_value_t = MV_CONC)]
+    #[arg(long, env = "MV_CONC", default_value_t = MV_CONC)]
     pub mv_conc: f32,
-    #[arg(long, default_value_t = DV_CONC)]
+    #[arg(long, env = "DV_CONC", default_value_t = DV_CONC)]
     pub dv_conc: f32,
-    #[arg(long, default_value_t = DNTP_CONC)]
+    #[arg(long, env = "DNTP_CONC", default_value_t = DNTP_CONC)]
     pub dntp_conc: f32,
-    #[arg(long, default_value_t = DNA_CONC)]
+    #[arg(long, env = "DNA_CONC", default_value_t = DNA_CONC)]
     pub dna_conc: f32,
-    #[arg(long, default_value_t = ANNEALING_TEMP)]
+    #[arg(long, env = "ANNEALING_TEMP", default_value_t = ANNEALING_TEMP)]
     pub annealing_temp: f32,
-    #[arg(long, default_value_t = PRIMER_MIN_TM)]
+    #[arg(long, env = "MIN_TM", default_value_t = PRIMER_MIN_TM)]
     pub min_tm: f32,
-    #[arg(long, default_value_t = PRIMER_MAX_TM)]
+    #[arg(long, env = "MAX_TM", default_value_t = PRIMER_MAX_TM)]
     pub max_tm: f32,
-    #[arg(long, default_value_t = PRIMER_MAX_SELF_ANY_TH)]
+    #[arg(long, env = "MAX_SELF_DIMER_ANY_TM", default_value_t = PRIMER_MAX_SELF_ANY_TH)]
     pub max_self_dimer_any_tm: f32,
-    #[arg(long, default_value_t = PRIMER_MAX_SELF_END_TH)]
+    #[arg(long, env = "MAX_SELF_DIMER_END_TM", default_value_t = PRIMER_MAX_SELF_END_TH)]
     pub max_self_dimer_end_tm: f32,
-    #[arg(long, default_value_t = PRIMER_MAX_HAIRPIN_TH)]
+    #[arg(long, env = "MAX_HAIRPIN_TM", default_value_t = PRIMER_MAX_HAIRPIN_TH)]
     pub max_hairpin_tm: f32,
-    #[arg(long, default_value_t = DELTA_G_THRESHOLD, help = "Threshold for dG, default is -9000.0 J/mol")]
+    #[arg(long, env = "DELTA_G_THRESHOLD", default_value_t = DELTA_G_THRESHOLD, help = "Threshold for dG, default is -9000.0 J/mol")]
     pub delta_g_threshold: f32,
 
     // logic based config
     #[arg(
         group = "flag",
         long,
+        env = "KEEP_ALL",
         default_value = "no",
         value_parser = ["yes", "no"],
         help = "Ignores all filtering and does NOT remove any primers."
@@ -67,6 +68,7 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
+        env = "CHECK_CROSS_DIMERS",
         default_value = "yes",
         value_parser = ["yes", "no"],
         help = "\
@@ -78,6 +80,7 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
+        env = "CHECK_SELF_DIMERS",
         default_value = "yes",
         value_parser = ["yes", "no"],
         help = "Calculates Tm for a self-dimer of an individual primer sequence."
@@ -87,6 +90,7 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
+        env = "CHECK_HAIRPIN",
         default_value = "yes",
         value_parser = ["yes", "no"],
         help = "Calculates Tm for a hairpin of an individual primer sequence."
@@ -96,6 +100,7 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
+        env = "STRICT_TM_RANGE",
         default_value = "yes",
         value_parser = ["yes", "no"],
         help = "Removes primers with melting temperature greater than 2 standard deviations from mean of the Tm values for all primers in set. Default is true."
@@ -104,17 +109,17 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
+        env = "DO_ALIGN",
         default_value = "yes",
-        value_parser = ["yes", "no"],
         help = "Does MAFFT multiple sequence alignment."
     )]
     pub do_align: String,
 
     // vendor binary path
-    #[arg(long, default_value_t = DEFAULT_NTTHAL_PATH.to_string())]
+    #[arg(long, env ="NTTHAL", default_value_t = DEFAULT_NTTHAL_PATH.to_string())]
     pub ntthal: String,
 
-    #[arg(long, default_value_t = DEFAULT_PRIMER3_PATH.to_string())]
+    #[arg(long, env = "PRIMER3", default_value_t = DEFAULT_PRIMER3_PATH.to_string())]
     pub primer3: String,
 }
 

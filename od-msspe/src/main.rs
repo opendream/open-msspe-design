@@ -4,10 +4,10 @@ mod delta_g;
 mod graphdb;
 mod primer;
 
-use crate::config::{find_executable, PrimerConfig, ProgramConfig};
+use crate::config::{PrimerConfig, ProgramConfig, find_executable};
 use crate::constants::{SEQ_DIR_FWD, SEQ_DIR_REV};
-use crate::delta_g::{run_ntthal, NtthalOptions};
-use crate::primer::{check_primers, CheckPrimerParams, PrimerInfo};
+use crate::delta_g::{NtthalOptions, run_ntthal};
+use crate::primer::{CheckPrimerParams, PrimerInfo, check_primers};
 use clap::Parser;
 use config::Args;
 use graphdb::Edge;
@@ -282,7 +282,7 @@ fn find_most_freq_kmer<'a>(
 
     kmer_freq_map
         .iter()
-        .max_by_key(|(_, &v)| v)
+        .max_by_key(|&(_, &v)| v)
         .map(|(k, &f)| KmerFrequency {
             kmer: k,
             frequency: f,
@@ -474,6 +474,7 @@ fn main() -> io::Result<()> {
     env_logger::init();
 
     let args = Args::parse();
+    log::debug!("args: do_align={:?}", args.do_align);
     let filename = args.input.to_string();
     let output_file = args.output.to_string();
 
@@ -492,10 +493,16 @@ fn main() -> io::Result<()> {
     let primer3_path = find_executable(args.primer3.as_str(), !is_primer3_path_default);
     // check if both ntthal and primer3 are available
     if ntthal_path.is_none() {
-        panic!("Binary ntthal({}) not found in the system. Make sure program is installed and specify the path with --ntthal", args.ntthal);
+        panic!(
+            "Binary ntthal({}) not found in the system. Make sure program is installed and specify the path with --ntthal",
+            args.ntthal
+        );
     }
     if primer3_path.is_none() {
-        panic!("Binary primer3({}) not found in the system. Make sure program is installed and specify the path with --primer3", args.ntthal);
+        panic!(
+            "Binary primer3({}) not found in the system. Make sure program is installed and specify the path with --primer3",
+            args.ntthal
+        );
     }
 
     let program_config = ProgramConfig {

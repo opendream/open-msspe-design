@@ -170,14 +170,14 @@ mod tests {
     use crate::constants::{PRIMER_MAX_TM, PRIMER_MIN_TM};
 
     fn get_test_primer3_params() -> CheckPrimerParams {
-        let primer3_path = find_executable("primer3_core").unwrap();
+        let primer3_path = find_executable("primer3_core", false).unwrap();
         CheckPrimerParams {
             min_tm: PRIMER_MIN_TM,
             max_tm: PRIMER_MAX_TM,
             primer3_path,
         }
     }
-    
+
     #[test]
     fn test_parse_primer3_output() {
         let result = "\

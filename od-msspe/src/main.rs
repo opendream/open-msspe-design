@@ -472,7 +472,7 @@ fn filter_kmers(stats: Vec<KmerStat>, program_config: ProgramConfig) -> Vec<Kmer
 
 fn main() -> io::Result<()> {
     env_logger::init();
-    
+
     let args = Args::parse();
     let filename = args.input.to_string();
     let output_file = args.output.to_string();

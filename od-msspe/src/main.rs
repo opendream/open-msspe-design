@@ -577,7 +577,7 @@ fn main() -> io::Result<()> {
         .chain(&candidate_primers_rev)
         .map(|s| s.word.clone())
         .collect();
-    let opts = NtthalOptions {
+    let ntthal_opts = NtthalOptions {
         mv: args.mv_conc,
         dv: args.dv_conc,
         dntp: args.dntp_conc,
@@ -585,7 +585,7 @@ fn main() -> io::Result<()> {
         t: args.annealing_temp,
         dg: args.delta_g_threshold,
     };
-    let graph = run_ntthal(primers.clone(), opts, program_config.clone())?;
+    let graph = run_ntthal(primers.clone(), ntthal_opts, program_config.clone())?;
     let mut candidate_unusable_edges: Vec<&Edge> = Vec::new();
     let mut primers_total_low_dg: HashMap<String, i32> = HashMap::new();
     // find nodes with dG < -9.0kmol-1
@@ -593,7 +593,7 @@ fn main() -> io::Result<()> {
         let edges = graph.get_edges_for_node(&primer);
         for edge in edges {
             let dg = edge.get_dg();
-            if dg < -9000.0 {
+            if dg < args.delta_g_threshold {
                 candidate_unusable_edges.push(edge);
                 let (a, b) = graph.get_edge_nodes(edge);
                 log::debug!("Edge: {} -> {} dg={}", a.id, b.id, dg);

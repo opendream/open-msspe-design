@@ -3,9 +3,7 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 use std::string::ParseError;
 
-#[doc = "Find primer related values like Tm, Hairpin, Dimers using Primer3"]
-pub const DEFAULT_MIN_TM: f32 = 30.0;
-pub const DEFAULT_MAX_TM: f32 = 60.0;
+/// Find primer related values like Tm, Hairpin, Dimers using Primer3
 
 #[derive(Clone)]
 pub struct PrimerInfo<'a> {
@@ -178,6 +176,7 @@ pub fn check_primers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{PRIMER_MAX_TM, PRIMER_MIN_TM};
     #[test]
     fn test_parse_primer3_output() {
         let result = "\
@@ -217,8 +216,8 @@ mod tests {
     fn test_format_primer3_input() {
         let primers = vec!["AGCCCGTGTAAAC".to_string()];
         let params = CheckPrimerParams {
-            min_tm: DEFAULT_MIN_TM,
-            max_tm: DEFAULT_MAX_TM,
+            min_tm: PRIMER_MIN_TM,
+            max_tm: PRIMER_MAX_TM,
         };
         let result = format_primer3_input(&primers, &params);
         assert_eq!(
@@ -239,8 +238,8 @@ mod tests {
     fn test_check_primers() {
         let primers = vec!["AGCCCGTGTAAAC".to_string()];
         let params = CheckPrimerParams {
-            min_tm: DEFAULT_MIN_TM,
-            max_tm: DEFAULT_MAX_TM,
+            min_tm: PRIMER_MIN_TM,
+            max_tm: PRIMER_MAX_TM,
         };
         let result = check_primers(&primers, params);
         assert!(result.is_ok());

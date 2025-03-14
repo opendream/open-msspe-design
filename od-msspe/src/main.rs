@@ -454,7 +454,8 @@ fn filter_kmers(stats: Vec<KmerStat>, program_config: ProgramConfig) -> Vec<Kmer
                 || (kmer_stat.self_end_th < primer_config.max_self_dimer_end_tm);
             let pass_hairpin = !program_config.check_hairpin
                 || (kmer_stat.hairpin_th < primer_config.max_hairpin_tm);
-            let pass_min_max_tm = kmer_stat.tm > primer_config.min_tm && kmer_stat.tm < primer_config.max_tm;
+            let pass_min_max_tm =
+                kmer_stat.tm > primer_config.min_tm && kmer_stat.tm < primer_config.max_tm;
             let pass_tm_stddev = !program_config.strict_tm_range || kmer_stat.tm_ok;
 
             pass_self_any

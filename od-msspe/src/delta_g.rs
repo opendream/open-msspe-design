@@ -173,7 +173,8 @@ mod tests {
             check_cross_dimers: true,
             check_self_dimers: true,
             check_hairpin: false,
-            strict_tm_range: false,
+            tm_stddev: 2.0,
+            disable_tm_stddev: false,
             do_align: false,
             primer_config: PrimerConfig {
                 kmer_size: 13,

@@ -398,7 +398,7 @@ fn get_kmer_stats(
                 std,
                 gc_percent: primer_info.gc,
                 tm: primer_info.tm,
-                tm_ok: tm_in_threshold(primer_info.tm, mean, std),
+                tm_ok: tm_in_threshold(primer_info.tm, mean, std, program_config.tm_stddev),
                 self_any_th: primer_info.self_any_th,
                 self_end_th: primer_info.self_end_th,
                 hairpin_th: primer_info.hairpin_th,
@@ -420,8 +420,8 @@ fn get_tm_stat(primer_info_list: &Vec<PrimerInfo>) -> (f32, f32) {
     (mean, std.standard_deviation)
 }
 
-fn tm_in_threshold(tm: f32, mean: f32, std: f32) -> bool {
-    (tm - mean).abs() <= (2.0 * std)
+fn tm_in_threshold(tm: f32, mean: f32, std: f32, diff: f32) -> bool {
+    (tm - mean).abs() <= (diff * std)
 }
 
 /**
@@ -456,7 +456,7 @@ fn filter_kmers(stats: Vec<KmerStat>, program_config: ProgramConfig) -> Vec<Kmer
                 || (kmer_stat.hairpin_th < primer_config.max_hairpin_tm);
             let pass_min_max_tm =
                 kmer_stat.tm > primer_config.min_tm && kmer_stat.tm < primer_config.max_tm;
-            let pass_tm_stddev = !program_config.strict_tm_range || kmer_stat.tm_ok;
+            let pass_tm_stddev = program_config.disable_tm_stddev || kmer_stat.tm_ok;
 
             pass_self_any
                 && pass_self_end
@@ -515,7 +515,8 @@ fn main() -> io::Result<()> {
         check_cross_dimers: args.check_cross_dimers.as_str() == "true",
         check_self_dimers: args.check_self_dimers.as_str() == "true",
         check_hairpin: args.check_hairpin.as_str() == "true",
-        strict_tm_range: args.strict_tm_range.as_str() == "true",
+        tm_stddev: args.tm_stddev,
+        disable_tm_stddev: args.disable_tm_stddev.as_str() == "true",
         do_align: args.do_align.as_str() == "true",
 
         primer_config: primer_config.clone(),

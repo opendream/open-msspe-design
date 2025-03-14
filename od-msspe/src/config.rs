@@ -100,14 +100,23 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
-        env = "STRICT_TM_RANGE",
-        default_value = "true",
+        env = "TM_STDDEV",
+        default_value_t = 2.0,
+        help = "Set the number of standard deviations away from the mean of the tm values."
+    )]
+    pub tm_stddev: f32,
+
+    #[arg(
+        group = "flag",
+        long,
+        env = "DISABLE_TM_STDDEV",
+        default_value = "false",
         value_parser = ["true", "false"],
         help = "\
-            Removes primers with melting temperature greater than 2 standard deviations \
-            from mean of the Tm values for all primers in set. Default is true."
+            Turns off tm-stddev config. Use if you do not want strictly similar tm values \
+            across all primers."
     )]
-    pub strict_tm_range: String,
+    pub disable_tm_stddev: String,
 
     #[arg(
         group = "flag",
@@ -149,7 +158,8 @@ pub struct ProgramConfig {
     pub check_cross_dimers: bool,
     pub check_self_dimers: bool,
     pub check_hairpin: bool,
-    pub strict_tm_range: bool,
+    pub tm_stddev: f32,
+    pub disable_tm_stddev: bool,
     pub do_align: bool,
 
     pub(crate) primer_config: PrimerConfig,

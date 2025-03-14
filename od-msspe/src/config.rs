@@ -108,7 +108,7 @@ pub struct Args {
             from mean of the Tm values for all primers in set. Default is true."
     )]
     pub strict_tm_range: String,
-    
+
     #[arg(
         group = "flag",
         long,

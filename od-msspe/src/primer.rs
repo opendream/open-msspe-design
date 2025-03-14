@@ -131,6 +131,8 @@ pub fn format_primer3_input(primers: &[String], params: &CheckPrimerParams) -> S
         input.push_str("PRIMER_MIN_SIZE=13\n");
         input.push_str(&format!("PRIMER_MIN_TM={:.2}\n", params.min_tm));
         input.push_str(&format!("PRIMER_MAX_TM={:.2}\n", params.max_tm));
+        // @see https://primer3.org/manual#PRIMER_OPT_TM
+        input.push_str(&format!("PRIMER_OPT_TM={:.2}\n", params.max_tm));
         input.push_str("PRIMER_PICK_ANYWAY=1\n");
         input.push_str("=\n");
     }
@@ -167,13 +169,12 @@ pub fn check_primers(
 mod tests {
     use super::*;
     use crate::config::find_executable;
-    use crate::constants::{PRIMER_MAX_TM, PRIMER_MIN_TM};
 
     fn get_test_primer3_params() -> CheckPrimerParams {
         let primer3_path = find_executable("primer3_core", false).unwrap();
         CheckPrimerParams {
-            min_tm: PRIMER_MIN_TM,
-            max_tm: PRIMER_MAX_TM,
+            min_tm: 29.0,
+            max_tm: 59.0,
             primer3_path,
         }
     }
@@ -225,8 +226,9 @@ mod tests {
             SEQUENCE_PRIMER=AGCCCGTGTAAAC\n\
             PRIMER_TASK=check_primers\n\
             PRIMER_MIN_SIZE=13\n\
-            PRIMER_MIN_TM=30.00\n\
-            PRIMER_MAX_TM=60.00\n\
+            PRIMER_MIN_TM=29.00\n\
+            PRIMER_MAX_TM=59.00\n\
+            PRIMER_OPT_TM=59.00\n\
             PRIMER_PICK_ANYWAY=1\n\
             =\n"
         )

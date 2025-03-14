@@ -72,8 +72,8 @@ pub struct Args {
         default_value = "yes",
         value_parser = ["yes", "no"],
         help = "\
-        Calculates nearest neighbor thermodynamic model for delta G values for every primer pair \
-        across entire pool of primers, and removes primer with most secondary structures, or lowest Tm."
+            Calculates nearest neighbor thermodynamic model for delta G values for every primer pair \
+            across entire pool of primers, and removes primer with most secondary structures, or lowest Tm."
     )]
     pub check_cross_dimers: String,
 
@@ -103,7 +103,9 @@ pub struct Args {
         env = "STRICT_TM_RANGE",
         default_value = "yes",
         value_parser = ["yes", "no"],
-        help = "Removes primers with melting temperature greater than 2 standard deviations from mean of the Tm values for all primers in set. Default is true."
+        help = "\
+            Removes primers with melting temperature greater than 2 standard deviations \
+            from mean of the Tm values for all primers in set. Default is true."
     )]
     pub strict_tm_range: String,
     #[arg(

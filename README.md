@@ -34,7 +34,7 @@ Key features:
 Clone the repository and navigate to the project directory:
 ```bash
 git clone https://github.com/opendream/open-msspe-design.git
-cd open-msspe-design
+cd open-msspe-design/od-msspe
 ```
 
 Install dependecies:
@@ -106,14 +106,12 @@ The following arguments control various aspects of the primer design process:
 
 ### Example
 ```bash
-cd od-msspe
-./target/release/od-msspe --input data/viral_genomes.fasta --output results/msspe_primers.csv --kmer-size=15
+cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv --kmer-size=15
 ```
 
 Debugging
 ```bash
-cd od-msspe
-RUST_LOG=info ./target/release/od-msspe --input data/viral_genomes.fasta --output results/msspe_primers.csv
+RUST_LOG=info cargo run -- --input data/viral_genomes.fasta --output results/msspe_primers.csv
 ```
 
 ---

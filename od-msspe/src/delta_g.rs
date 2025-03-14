@@ -1,4 +1,6 @@
+use crate::config::ProgramConfig;
 use crate::graphdb::{Edge, GraphDB};
+use crate::reverse_complement;
 use std::collections::HashMap;
 use std::env::current_dir;
 use std::io::Write;
@@ -19,6 +21,7 @@ pub struct NtthalOptions {
     pub dntp: f32,
     pub conc: f32,
     pub t: f32,
+    pub dg: f32,
 }
 
 pub fn parse_ntthal_output(input: &str, output: String, delta_g_threshold: f32) -> GraphDB {
@@ -55,11 +58,20 @@ pub fn parse_ntthal_output(input: &str, output: String, delta_g_threshold: f32) 
     graph
 }
 
-pub fn format_ntthal_input(primers: &[String]) -> String {
+pub fn format_ntthal_input(primers: &[String], program_config: ProgramConfig) -> String {
+    let primer_config = &program_config.primer_config;
     let mut output = "".to_string();
     for a in primers {
         for b in primers {
-            if a.len() != 13 || b.len() != 13 {
+            // Skip if the primers are the same and program_config.check_self_dimers is false
+            if !program_config.check_self_dimers && (a == b || reverse_complement(b) == *a) {
+                continue;
+            }
+            // Skip if program_config.check_cross_dimers is false
+            if !program_config.check_cross_dimers {
+                continue;
+            }
+            if a.len() != primer_config.kmer_size || b.len() != primer_config.kmer_size {
                 log::debug!("primers not valid: a:{}, b:{}", a, b);
             }
             output.push_str(&format!("{},{}\n", a, b));
@@ -68,22 +80,17 @@ pub fn format_ntthal_input(primers: &[String]) -> String {
     output.trim().to_string()
 }
 
-pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, std::io::Error> {
+pub fn run_ntthal(
+    primers: Vec<String>,
+    opts: NtthalOptions,
+    program_config: ProgramConfig,
+) -> Result<GraphDB, std::io::Error> {
     // Execute ntthal with the given sequences and conditions
     log::trace!("Calculating ΔG for {} sequences", primers.len());
     let path = format!("{}/primer3_config/", current_dir()?.display());
 
     // Check if macOS, use default primer3_core, else use primer3_core from system.
-    let mut ntthal: String = String::from("ntthal");
-    if cfg!(target_os = "macos") {
-        let path = current_dir()?.join("bin/ntthal");
-        // test for executable
-        if path.exists() {
-            ntthal = path.into_os_string().into_string().unwrap();
-        }
-    }
-
-    let mut cmd = Command::new(ntthal)
+    let mut cmd = Command::new(program_config.clone().ntthal_path)
         .args([
             "-a",
             "ANY",
@@ -123,7 +130,7 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
     );
 
     // Write the input sequences to the stdin of the process
-    let input = format_ntthal_input(&primers);
+    let input = format_ntthal_input(&primers, program_config.clone());
     let input_clone = input.clone();
     if let Some(mut stdin) = cmd.stdin.take() {
         std::thread::spawn(move || {
@@ -145,18 +152,40 @@ pub fn run_ntthal(primers: Vec<String>, opts: NtthalOptions) -> Result<GraphDB, 
 
     // Process the output as needed
     let result = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_ntthal_output(&input, result.to_string(), -9000.0))
+    Ok(parse_ntthal_output(&input, result.to_string(), opts.dg))
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::config::{PrimerConfig, ProgramConfig};
     use crate::delta_g::{format_ntthal_input, parse_ntthal_output};
     use crate::graphdb::get_edge_id;
 
     #[test]
     pub fn test_format_ntthal_input() {
         let primers = vec!["GAAGCAGTATTTT".to_string(), "AATATAGAGGCTG".to_string()];
-        let result = format_ntthal_input(&primers);
+        let program_config = ProgramConfig {
+            ntthal_path: "".to_string(),
+            primer3_path: "".to_string(),
+            max_iterations: 0,
+            max_mismatch_segments: 0,
+            keep_all: false,
+            check_cross_dimers: true,
+            check_self_dimers: true,
+            check_hairpin: false,
+            tm_stddev: 2.0,
+            disable_tm_stddev: false,
+            do_align: false,
+            primer_config: PrimerConfig {
+                kmer_size: 13,
+                min_tm: 30.0,
+                max_tm: 60.0,
+                max_self_dimer_any_tm: 20.0,
+                max_self_dimer_end_tm: 20.0,
+                max_hairpin_tm: 20.0,
+            },
+        };
+        let result = format_ntthal_input(&primers, program_config.clone());
         let expected = "\
             GAAGCAGTATTTT,GAAGCAGTATTTT\n\
             GAAGCAGTATTTT,AATATAGAGGCTG\n\

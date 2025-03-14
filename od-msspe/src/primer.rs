@@ -1,11 +1,8 @@
-use std::env::current_dir;
 use std::io::Write;
 use std::process::{Command, Stdio};
 use std::string::ParseError;
 
-#[doc = "Find primer related values like Tm, Hairpin, Dimers using Primer3"]
-pub const DEFAULT_MIN_TM: f32 = 30.0;
-pub const DEFAULT_MAX_TM: f32 = 60.0;
+/// Find primer related values like Tm, Hairpin, Dimers using Primer3
 
 #[derive(Clone)]
 pub struct PrimerInfo<'a> {
@@ -41,6 +38,7 @@ impl<'a> PrimerInfo<'a> {
 pub struct CheckPrimerParams {
     pub min_tm: f32,
     pub max_tm: f32,
+    pub primer3_path: String,
 }
 
 /// Try to parse Primer3 output as PrimerInfo
@@ -133,6 +131,8 @@ pub fn format_primer3_input(primers: &[String], params: &CheckPrimerParams) -> S
         input.push_str("PRIMER_MIN_SIZE=13\n");
         input.push_str(&format!("PRIMER_MIN_TM={:.2}\n", params.min_tm));
         input.push_str(&format!("PRIMER_MAX_TM={:.2}\n", params.max_tm));
+        // @see https://primer3.org/manual#PRIMER_OPT_TM
+        input.push_str(&format!("PRIMER_OPT_TM={:.2}\n", params.max_tm));
         input.push_str("PRIMER_PICK_ANYWAY=1\n");
         input.push_str("=\n");
     }
@@ -147,18 +147,8 @@ pub fn check_primers(
     let mut primer_info_list = Vec::new();
 
     let input = format_primer3_input(primers, &params);
-
-    // Check if macOS, use default primer3_core, else use primer3_core from system.
-    let mut primer3_core: String = String::from("primer3_core");
-    if cfg!(target_os = "macos") {
-        let path = current_dir()?.join("bin/primer3_core");
-        // test for executable
-        if path.exists() {
-            primer3_core = path.into_os_string().into_string().unwrap();
-        }
-    }
-
-    let mut cmd = Command::new(primer3_core)
+    log::debug!("using primer3 binary: {:?}", params.primer3_path);
+    let mut cmd = Command::new(params.primer3_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
@@ -178,6 +168,17 @@ pub fn check_primers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::find_executable;
+
+    fn get_test_primer3_params() -> CheckPrimerParams {
+        let primer3_path = find_executable("primer3_core", false).unwrap();
+        CheckPrimerParams {
+            min_tm: 29.0,
+            max_tm: 59.0,
+            primer3_path,
+        }
+    }
+
     #[test]
     fn test_parse_primer3_output() {
         let result = "\
@@ -216,10 +217,7 @@ mod tests {
     #[test]
     fn test_format_primer3_input() {
         let primers = vec!["AGCCCGTGTAAAC".to_string()];
-        let params = CheckPrimerParams {
-            min_tm: DEFAULT_MIN_TM,
-            max_tm: DEFAULT_MAX_TM,
-        };
+        let params = get_test_primer3_params();
         let result = format_primer3_input(&primers, &params);
         assert_eq!(
             result,
@@ -228,8 +226,9 @@ mod tests {
             SEQUENCE_PRIMER=AGCCCGTGTAAAC\n\
             PRIMER_TASK=check_primers\n\
             PRIMER_MIN_SIZE=13\n\
-            PRIMER_MIN_TM=30.00\n\
-            PRIMER_MAX_TM=60.00\n\
+            PRIMER_MIN_TM=29.00\n\
+            PRIMER_MAX_TM=59.00\n\
+            PRIMER_OPT_TM=59.00\n\
             PRIMER_PICK_ANYWAY=1\n\
             =\n"
         )
@@ -238,10 +237,7 @@ mod tests {
     #[test]
     fn test_check_primers() {
         let primers = vec!["AGCCCGTGTAAAC".to_string()];
-        let params = CheckPrimerParams {
-            min_tm: DEFAULT_MIN_TM,
-            max_tm: DEFAULT_MAX_TM,
-        };
+        let params = get_test_primer3_params();
         let result = check_primers(&primers, params);
         assert!(result.is_ok());
         let primer_info_list = result.unwrap();

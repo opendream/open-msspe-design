@@ -59,8 +59,8 @@ pub struct Args {
         group = "flag",
         long,
         env = "KEEP_ALL",
-        default_value = "no",
-        value_parser = ["yes", "no"],
+        default_value = "false",
+        value_parser = ["true", "false"],
         help = "Ignores all filtering and does NOT remove any primers."
     )]
     pub keep_all: String,
@@ -69,8 +69,8 @@ pub struct Args {
         group = "flag",
         long,
         env = "CHECK_CROSS_DIMERS",
-        default_value = "yes",
-        value_parser = ["yes", "no"],
+        default_value = "true",
+        value_parser = ["true", "false"],
         help = "\
             Calculates nearest neighbor thermodynamic model for delta G values for every primer pair \
             across entire pool of primers, and removes primer with most secondary structures, or lowest Tm."
@@ -81,8 +81,8 @@ pub struct Args {
         group = "flag",
         long,
         env = "CHECK_SELF_DIMERS",
-        default_value = "yes",
-        value_parser = ["yes", "no"],
+        default_value = "true",
+        value_parser = ["true", "false"],
         help = "Calculates Tm for a self-dimer of an individual primer sequence."
     )]
     pub check_self_dimers: String,
@@ -91,8 +91,8 @@ pub struct Args {
         group = "flag",
         long,
         env = "CHECK_HAIRPIN",
-        default_value = "yes",
-        value_parser = ["yes", "no"],
+        default_value = "true",
+        value_parser = ["true", "false"],
         help = "Calculates Tm for a hairpin of an individual primer sequence."
     )]
     pub check_hairpin: String,
@@ -101,18 +101,20 @@ pub struct Args {
         group = "flag",
         long,
         env = "STRICT_TM_RANGE",
-        default_value = "yes",
-        value_parser = ["yes", "no"],
+        default_value = "true",
+        value_parser = ["true", "false"],
         help = "\
             Removes primers with melting temperature greater than 2 standard deviations \
             from mean of the Tm values for all primers in set. Default is true."
     )]
     pub strict_tm_range: String,
+    
     #[arg(
         group = "flag",
         long,
         env = "DO_ALIGN",
-        default_value = "yes",
+        default_value = "true",
+        value_parser = ["true", "false"],
         help = "Does MAFFT multiple sequence alignment."
     )]
     pub do_align: String,

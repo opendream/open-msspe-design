@@ -512,12 +512,12 @@ fn main() -> io::Result<()> {
         max_iterations: args.max_iterations,
         max_mismatch_segments: args.max_mismatch_segments,
 
-        keep_all: args.keep_all.as_str() == "yes",
-        check_cross_dimers: args.check_cross_dimers.as_str() == "yes",
-        check_self_dimers: args.check_self_dimers.as_str() == "yes",
-        check_hairpin: args.check_hairpin.as_str() == "yes",
-        strict_tm_range: args.strict_tm_range.as_str() == "yes",
-        do_align: args.do_align.as_str() == "yes",
+        keep_all: args.keep_all.as_str() == "true",
+        check_cross_dimers: args.check_cross_dimers.as_str() == "true",
+        check_self_dimers: args.check_self_dimers.as_str() == "true",
+        check_hairpin: args.check_hairpin.as_str() == "true",
+        strict_tm_range: args.strict_tm_range.as_str() == "true",
+        do_align: args.do_align.as_str() == "true",
 
         primer_config: primer_config.clone(),
     };

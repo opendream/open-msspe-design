@@ -10,14 +10,16 @@ Open-MSSPE-Design is a Rust-based pipeline for designing primers for Metagenomic
 
 Key features:
 - Fully automated primer design workflow.
-- Rust implementation for performance and reliability.
+- Fully customizable kmer selection process. 
 - Uses nearest-neighbor thermodynamic models from the standalone Primer3 package [ntthal](https://manpages.debian.org/testing/primer3/ntthal.1.en.html)
 - Enhanced filtering for:
-  - nucleotide repeats
-  - homopolymers
-  - extremely high/low Tm values (<30 or >60)
+  - nucleotide repeats & homopolymers
+  - specific minimum and maximum temperature of melting (tm) values
+  - strict tm value ranges (within 2 standard deviations of mean)
   - hairpins (with same primer)
   - cross-dimers (across multiple primers/entire pool)
+  - check strength of secondary structures via DeltaG calculations
+- Rust implementation for performance and reliability.
 
 ---
 
@@ -63,15 +65,48 @@ To run the pipeline:
 cargo run
 ```
 
-### Options
+### Required Config
 - `--input`: Path to the input FASTA file containing viral genome sequences.
 - `--output`: Directory where the designed primers will be saved.
-- `--config`: (Optional) Path to a configuration file for advanced settings.
+
+### Optional Config
+The following arguments control various aspects of the primer design process:
+
+#### Primer Design Parameters
+- `--kmer-size`: Size of k-mers used in primer design (default: 13).
+- `--window-size`: Window size for genome scanning (default: 500).
+- `--overlap-size`: Overlap size between adjacent windows (default: 250).
+- `--max-mismatch-segments`: Maximum number of mismatched segments allowed (default: 1).
+- `--max-iterations`: Maximum number of iterations for primer optimization (default: 1000).
+- `--search-windows-size`: Size of search windows for primer candidates (default: 50).
+
+#### Thermodynamic Parameters
+- `--mv-conc`: Monovalent cation concentration in mM (default: 50.0).
+- `--dv-conc`: Divalent cation concentration in mM (default: 3.0).
+- `--dntp-conc`: dNTP concentration in mM (default: 0.0).
+- `--dna-conc`: Primer concentration in nM (default: 250.0).
+- `--annealing-temp`: Annealing temperature in °C (default: 25.0).
+
+#### Temperature Thresholds
+- `--min-tm`: Minimum melting temperature allowed (default: 30.0).
+- `--max-tm`: Maximum melting temperature allowed (default: 60.0).
+- `--max-self-dimer-any-tm`: Maximum Tm for self-dimer at any position (default: 10°C below max-tm).
+- `--max-self-dimer-end-tm`: Maximum Tm for self-dimer at 3' end (default: 10°C below max-tm).
+- `--max-hairpin-tm`: Maximum Tm for hairpin structures (default: 10°C below min-tm).
+- `--max-delta-g`: Maximum delta G value for secondary structures (default: -9).
+
+#### Boolean Flags
+- `--keep-all`: Ignore all filtering criteria and keep all primers.
+- `--check-cross-dimers`: Enable cross-dimer checking between all primer pairs.
+- `--check-self-dimer`: Enable self-dimer checking for individual primers.
+- `--check-hairpin`: Enable hairpin structure checking for individual primers.
+- `--strict-tm-range`: Remove primers with Tm values >2 standard deviations from mean.
+- `--do-align`: Perform MAFFT multiple sequence alignment if true. Set to false if sequence already aligned.
 
 ### Example
 ```bash
 cd od-msspe
-./target/release/od-msspe --input data/viral_genomes.fasta --output results/msspe_primers.csv
+./target/release/od-msspe --input data/viral_genomes.fasta --output results/msspe_primers.csv --kmer-size=15
 ```
 
 Debugging

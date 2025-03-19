@@ -29,6 +29,7 @@ Key features:
 - [Rust](https://www.rust-lang.org/tools/install) (latest stable version)
 - [Cargo](https://crates.io/) (Rust package manager)
 - [mafft](https://mafft.cbrc.jp/alignment/server/index.html) for multiple sequence alignment
+- [Primer3](https://primer3.org) for designing PCR primers.
 
 ### Installation
 Clone the repository and navigate to the project directory:
@@ -42,6 +43,7 @@ Install dependecies:
 ```bash
 brew install rust
 brew install mafft
+brew install primer3
 ```
 
 ### Input Requirements

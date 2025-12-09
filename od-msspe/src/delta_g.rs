@@ -144,10 +144,7 @@ pub fn run_ntthal(
     // Read the output from the stdout of the process
     let output = cmd.wait_with_output()?;
     if !output.status.success() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "ntthal process failed",
-        ));
+        return Err(std::io::Error::other("ntthal process failed"));
     }
 
     // Process the output as needed

@@ -194,7 +194,7 @@ struct PartitioningOption {
     kmer_size: usize,
 }
 
-fn get_segment_manager(records: &[SequenceRecord], opt: PartitioningOption) -> SegmentManager {
+fn get_segment_manager(records: &[SequenceRecord], opt: PartitioningOption) -> SegmentManager<'_> {
     let mut manager = SegmentManager {
         segments: Vec::new(),
     };

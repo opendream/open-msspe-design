@@ -1,4 +1,4 @@
-# Open MSSPE Design
+# Open MSSPE Design (v1.0)
 
 ![Build status](https://github.com/opendream/open-msspe-design/actions/workflows/open-msspe-design.yml/badge.svg)
 

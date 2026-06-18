@@ -180,7 +180,6 @@ pub struct ProgramConfig {
     pub tm_stddev: f32,
     pub disable_tm_stddev: bool,
     pub disable_min_max_tm: bool,
-    pub do_align: bool,
 
     pub(crate) primer_config: PrimerConfig,
 }

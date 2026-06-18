@@ -660,7 +660,6 @@ fn main() -> io::Result<()> {
         tm_stddev: args.tm_stddev,
         disable_tm_stddev: args.disable_tm_stddev.as_str() == "true",
         disable_min_max_tm: args.disable_min_max_tm.as_str() == "true",
-        do_align,
 
         primer_config: primer_config.clone(),
     };

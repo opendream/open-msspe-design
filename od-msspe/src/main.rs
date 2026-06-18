@@ -554,7 +554,18 @@ fn print_coverage_report(
         }
     }
 
+    let seq_coverages: Vec<f32> = seq_stats
+        .values()
+        .map(|(c, t)| *c as f32 / *t as f32 * 100.0)
+        .collect();
+    let mean_cov = seq_coverages.iter().sum::<f32>() / seq_coverages.len() as f32;
+    let min_cov = seq_coverages.iter().cloned().fold(f32::INFINITY, f32::min);
+    let max_cov = seq_coverages
+        .iter()
+        .cloned()
+        .fold(f32::NEG_INFINITY, f32::max);
     let fully_covered_seqs = seq_stats.values().filter(|(c, t)| c == t).count();
+
     let mut uncovered_partitions: Vec<u16> = partition_stats
         .iter()
         .filter(|(_, (c, _))| *c == 0)
@@ -570,7 +581,10 @@ fn print_coverage_report(
         100.0 * covered.len() as f32 / total as f32
     );
     println!(
-        "  Sequences: {}/{} fully covered",
+        "  Sequences: mean {:.1}% covered (min {:.1}%, max {:.1}%); {}/{} fully covered",
+        mean_cov,
+        min_cov,
+        max_cov,
         fully_covered_seqs,
         seq_stats.len()
     );

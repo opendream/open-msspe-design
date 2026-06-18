@@ -657,7 +657,7 @@ fn main() -> io::Result<()> {
     // The paper specifies n=1 for small datasets up to n=10 for thousands of genomes.
     let max_mismatch_segments = args
         .max_mismatch_segments
-        .unwrap_or_else(|| ((records.len() + 49) / 50).max(1).min(10));
+        .unwrap_or_else(|| records.len().div_ceil(50).clamp(1, 10));
     log::info!(
         "max_mismatch_segments={} (auto-scaled from {} sequences)",
         max_mismatch_segments,

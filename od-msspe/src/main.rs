@@ -525,8 +525,12 @@ fn print_coverage_report(
 
     let mut covered: HashSet<usize> = HashSet::new();
     for segment in &segment_manager.segments {
-        let fwd_hit = segment.kmers[0].iter().any(|k| selected_fwd.contains(k.word.as_str()));
-        let rev_hit = segment.kmers[1].iter().any(|k| selected_rev.contains(k.word.as_str()));
+        let fwd_hit = segment.kmers[0]
+            .iter()
+            .any(|k| selected_fwd.contains(k.word.as_str()));
+        let rev_hit = segment.kmers[1]
+            .iter()
+            .any(|k| selected_rev.contains(k.word.as_str()));
         if fwd_hit || rev_hit {
             covered.insert(segment.index);
         }
@@ -540,7 +544,9 @@ fn print_coverage_report(
             .entry(segment.sequence.name.as_str())
             .or_insert((0, 0));
         se.1 += 1;
-        let pe = partition_stats.entry(segment.partition_no).or_insert((0, 0));
+        let pe = partition_stats
+            .entry(segment.partition_no)
+            .or_insert((0, 0));
         pe.1 += 1;
         if covered.contains(&segment.index) {
             se.0 += 1;

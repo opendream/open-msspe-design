@@ -10,7 +10,6 @@ use crate::delta_g::{NtthalOptions, run_ntthal};
 use crate::primer::{CheckPrimerParams, PrimerInfo, check_primers};
 use clap::Parser;
 use config::Args;
-use graphdb::Edge;
 use itertools::Itertools;
 use ngrams::Ngram;
 use seq_io::fasta::{Reader, Record};
@@ -255,10 +254,40 @@ fn make_kmer_segments_windows_mapping<'a>(
     kmer_segments_mapping
 }
 
+// Score used to break ties when multiple k-mers share the highest frequency.
+// Prefers k-mers that cover partition numbers that are currently under-represented,
+// ensuring primers are distributed across the full genome rather than clustering
+// at the most conserved locus.
+fn partition_tie_score(
+    kmer: &KmerRecord,
+    kmer_to_segments: &HashMap<&KmerRecord, Vec<u32>>,
+    segments: &[Segment],
+    ignored: &HashSet<u32>,
+    partition_coverage: &HashMap<u16, usize>,
+) -> f32 {
+    let mut seen: HashSet<u16> = HashSet::new();
+    let mut score = 0.0f32;
+    if let Some(indices) = kmer_to_segments.get(kmer) {
+        for &idx in indices {
+            if ignored.contains(&idx) {
+                continue;
+            }
+            let p = segments[idx as usize].partition_no;
+            if seen.insert(p) {
+                let already_covered = partition_coverage.get(&p).copied().unwrap_or(0);
+                score += 1.0 / (already_covered as f32 + 1.0);
+            }
+        }
+    }
+    score
+}
+
 fn find_most_freq_kmer<'a>(
     segments: &'a Vec<Segment>,
     direction: u8,
-    ignored_segments_windows: HashSet<u32>,
+    ignored: &HashSet<u32>,
+    kmer_to_segments: &HashMap<&'a KmerRecord, Vec<u32>>,
+    partition_coverage: &HashMap<u16, usize>,
 ) -> Option<KmerFrequency<'a>> {
     let mut kmer_freq_map: HashMap<&KmerRecord, usize> = HashMap::new();
 
@@ -267,8 +296,7 @@ fn find_most_freq_kmer<'a>(
             if window_direction != direction as usize {
                 continue;
             }
-            let key = idx as u32;
-            if ignored_segments_windows.contains(&key) {
+            if ignored.contains(&(idx as u32)) {
                 continue;
             }
             for kmer in kmers.iter() {
@@ -280,12 +308,23 @@ fn find_most_freq_kmer<'a>(
         }
     }
 
+    let max_freq = kmer_freq_map.values().copied().max()?;
     kmer_freq_map
         .iter()
-        .max_by_key(|&(_, &v)| v)
-        .map(|(k, &f)| KmerFrequency {
+        .filter(|(_, f)| **f == max_freq)
+        .map(|(k, _)| {
+            let score =
+                partition_tie_score(k, kmer_to_segments, segments, ignored, partition_coverage);
+            (*k, score)
+        })
+        .max_by(|(k1, s1), (k2, s2)| {
+            s1.partial_cmp(s2)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(k2.word.cmp(&k1.word))
+        })
+        .map(|(k, _)| KmerFrequency {
             kmer: k,
-            frequency: f,
+            frequency: max_freq,
         })
 }
 
@@ -295,16 +334,21 @@ fn find_candidates_kmers<'a>(
     config: ProgramConfig,
 ) -> Option<Vec<KmerFrequency<'a>>> {
     let mut candidate_kmers: Vec<KmerFrequency> = Vec::new();
-    let kmer_segments_windows_mappings =
-        make_kmer_segments_windows_mapping(&segment_manager.segments);
-    let mut ignored_segments_windows: HashSet<u32> = HashSet::new();
+    let kmer_to_segments = make_kmer_segments_windows_mapping(&segment_manager.segments);
+    let mut ignored: HashSet<u32> = HashSet::new();
+    // Tracks how many primers have been selected that cover each partition number.
+    // Used by find_most_freq_kmer to break frequency ties in favour of under-served
+    // genomic regions.
+    let mut partition_coverage: HashMap<u16, usize> = HashMap::new();
 
     for iter_no in 0..config.max_iterations {
         log::trace!("Iteration: {}", iter_no + 1);
         let kmer_freq = match find_most_freq_kmer(
             &segment_manager.segments,
             direction,
-            ignored_segments_windows.clone(),
+            &ignored,
+            &kmer_to_segments,
+            &partition_coverage,
         ) {
             Some(k) => {
                 if k.frequency == 1 {
@@ -323,19 +367,21 @@ fn find_candidates_kmers<'a>(
         };
         candidate_kmers.push(kmer_freq.clone());
 
-        // update ignored segments
-        let mut count = 0;
-        for idx in kmer_segments_windows_mappings.get(&kmer_freq.kmer).unwrap() {
-            count += 1;
-            ignored_segments_windows.insert(*idx);
+        // Mark all segments containing this k-mer as covered and update partition counts.
+        let mut newly_covered_partitions: HashSet<u16> = HashSet::new();
+        for &idx in kmer_to_segments.get(&kmer_freq.kmer).unwrap() {
+            ignored.insert(idx);
+            newly_covered_partitions.insert(segment_manager.segments[idx as usize].partition_no);
+        }
+        for p in newly_covered_partitions {
+            *partition_coverage.entry(p).or_insert(0) += 1;
         }
         log::debug!(
-            "Iteration: {}, direction: {} winner: {}, windows removed: {}, total removed: {}",
+            "Iteration: {}, direction: {} winner: {}, total ignored: {}",
             iter_no,
             direction,
             kmer_freq.kmer.word,
-            count,
-            ignored_segments_windows.len()
+            ignored.len()
         );
 
         if kmer_freq.frequency < config.max_mismatch_segments {
@@ -469,6 +515,66 @@ fn filter_kmers(stats: Vec<KmerStat>, program_config: ProgramConfig) -> Vec<Kmer
         .collect()
 }
 
+fn print_coverage_report(
+    fwd_primers: &[KmerStat],
+    rev_primers: &[KmerStat],
+    segment_manager: &SegmentManager,
+) {
+    let selected_fwd: HashSet<&str> = fwd_primers.iter().map(|p| p.word.as_str()).collect();
+    let selected_rev: HashSet<&str> = rev_primers.iter().map(|p| p.word.as_str()).collect();
+
+    let mut covered: HashSet<usize> = HashSet::new();
+    for segment in &segment_manager.segments {
+        let fwd_hit = segment.kmers[0].iter().any(|k| selected_fwd.contains(k.word.as_str()));
+        let rev_hit = segment.kmers[1].iter().any(|k| selected_rev.contains(k.word.as_str()));
+        if fwd_hit || rev_hit {
+            covered.insert(segment.index);
+        }
+    }
+
+    let total = segment_manager.segments.len();
+    let mut seq_stats: HashMap<&str, (usize, usize)> = HashMap::new();
+    let mut partition_stats: HashMap<u16, (usize, usize)> = HashMap::new();
+    for segment in &segment_manager.segments {
+        let se = seq_stats
+            .entry(segment.sequence.name.as_str())
+            .or_insert((0, 0));
+        se.1 += 1;
+        let pe = partition_stats.entry(segment.partition_no).or_insert((0, 0));
+        pe.1 += 1;
+        if covered.contains(&segment.index) {
+            se.0 += 1;
+            pe.0 += 1;
+        }
+    }
+
+    let fully_covered_seqs = seq_stats.values().filter(|(c, t)| c == t).count();
+    let mut uncovered_partitions: Vec<u16> = partition_stats
+        .iter()
+        .filter(|(_, (c, _))| *c == 0)
+        .map(|(&p, _)| p)
+        .collect();
+    uncovered_partitions.sort();
+
+    println!("\nCoverage report:");
+    println!(
+        "  Segments:  {}/{} covered ({:.1}%)",
+        covered.len(),
+        total,
+        100.0 * covered.len() as f32 / total as f32
+    );
+    println!(
+        "  Sequences: {}/{} fully covered",
+        fully_covered_seqs,
+        seq_stats.len()
+    );
+    if uncovered_partitions.is_empty() {
+        println!("  All partitions have primer coverage");
+    } else {
+        println!("  Uncovered partitions: {:?}", uncovered_partitions);
+    }
+}
+
 fn main() -> io::Result<()> {
     env_logger::init();
 
@@ -504,28 +610,11 @@ fn main() -> io::Result<()> {
         );
     }
 
-    let program_config = ProgramConfig {
-        ntthal_path: ntthal_path.unwrap().to_string(),
-        primer3_path: primer3_path.unwrap().to_string(),
-
-        max_iterations: args.max_iterations,
-        max_mismatch_segments: args.max_mismatch_segments,
-
-        keep_all: args.keep_all.as_str() == "true",
-        check_cross_dimers: args.check_cross_dimers.as_str() == "true",
-        check_self_dimers: args.check_self_dimers.as_str() == "true",
-        check_hairpin: args.check_hairpin.as_str() == "true",
-        tm_stddev: args.tm_stddev,
-        disable_tm_stddev: args.disable_tm_stddev.as_str() == "true",
-        disable_min_max_tm: args.disable_min_max_tm.as_str() == "true",
-        do_align: args.do_align.as_str() == "true",
-
-        primer_config: primer_config.clone(),
-    };
+    let do_align = args.do_align.as_str() == "true";
 
     // 1. Align sequences
     log::info!("Aligning sequences...");
-    let records = match program_config.do_align {
+    let records = match do_align {
         true => match align_sequences(filename) {
             Ok(records) => to_records(records)?,
             Err(e) => {
@@ -537,7 +626,7 @@ fn main() -> io::Result<()> {
             to_records(file)?
         }
     };
-    if program_config.do_align {
+    if do_align {
         log::info!(".... DONE.");
     } else {
         log::info!(".... SKIPPED.");
@@ -545,6 +634,36 @@ fn main() -> io::Result<()> {
     if records.iter().len() == 0 {
         panic!("No sequences found in the input file");
     }
+
+    // Scale max_mismatch_segments with input diversity when not set explicitly.
+    // The paper specifies n=1 for small datasets up to n=10 for thousands of genomes.
+    let max_mismatch_segments = args
+        .max_mismatch_segments
+        .unwrap_or_else(|| (records.len() / 50).max(1).min(10));
+    log::info!(
+        "max_mismatch_segments={} (auto-scaled from {} sequences)",
+        max_mismatch_segments,
+        records.len()
+    );
+
+    let program_config = ProgramConfig {
+        ntthal_path: ntthal_path.unwrap().to_string(),
+        primer3_path: primer3_path.unwrap().to_string(),
+
+        max_iterations: args.max_iterations,
+        max_mismatch_segments,
+
+        keep_all: args.keep_all.as_str() == "true",
+        check_cross_dimers: args.check_cross_dimers.as_str() == "true",
+        check_self_dimers: args.check_self_dimers.as_str() == "true",
+        check_hairpin: args.check_hairpin.as_str() == "true",
+        tm_stddev: args.tm_stddev,
+        disable_tm_stddev: args.disable_tm_stddev.as_str() == "true",
+        disable_min_max_tm: args.disable_min_max_tm.as_str() == "true",
+        do_align,
+
+        primer_config: primer_config.clone(),
+    };
 
     // 2. Extracting n-grams from each sequence segments
     log::info!("Extracting n-grams from each sequence segments...");
@@ -614,41 +733,53 @@ fn main() -> io::Result<()> {
         dg: args.delta_g_threshold,
     };
     let graph = run_ntthal(primers.clone(), ntthal_opts, program_config.clone())?;
-    let mut candidate_unusable_edges: Vec<&Edge> = Vec::new();
-    let mut primers_total_low_dg: HashMap<String, i32> = HashMap::new();
-    // find nodes with dG < -9.0kmol-1
-    for primer in primers.clone() {
-        let edges = graph.get_edges_for_node(&primer);
-        for edge in edges {
-            let dg = edge.get_dg();
-            if dg < args.delta_g_threshold {
-                candidate_unusable_edges.push(edge);
+
+    // Build a conflict adjacency list: edges where dG is below the threshold.
+    let mut conflicts: HashMap<String, HashSet<String>> = HashMap::new();
+    for primer in &primers {
+        for edge in graph.get_edges_for_node(primer) {
+            if edge.get_dg() < args.delta_g_threshold {
                 let (a, b) = graph.get_edge_nodes(edge);
-                log::debug!("Edge: {} -> {} dg={}", a.id, b.id, dg);
-                *primers_total_low_dg.entry(a.id.clone()).or_insert(0) += 1;
-                *primers_total_low_dg.entry(b.id.clone()).or_insert(0) += 1;
+                log::debug!("Conflict edge: {} <-> {} dg={}", a.id, b.id, edge.get_dg());
+                conflicts
+                    .entry(a.id.clone())
+                    .or_default()
+                    .insert(b.id.clone());
+                conflicts
+                    .entry(b.id.clone())
+                    .or_default()
+                    .insert(a.id.clone());
             }
         }
     }
+
+    // Iterative greedy minimum vertex cover: at each step remove the primer with the
+    // most currently active conflicts. Ties are broken lexicographically so the result
+    // is deterministic regardless of HashMap iteration order.
     let mut deleted_primers: HashSet<String> = HashSet::new();
-    for edge in candidate_unusable_edges {
-        let (a, b) = graph.get_edge_nodes(edge);
-        let total_n_a = primers_total_low_dg.get(&a.id).unwrap();
-        let total_n_b = primers_total_low_dg.get(&b.id).unwrap();
-        if total_n_a > &1 {
-            deleted_primers.insert(a.id.clone());
-        }
-        if total_n_b > &1 {
-            deleted_primers.insert(b.id.clone());
-        }
-        if total_n_a == &1 && !deleted_primers.contains(b.id.as_str()) {
-            deleted_primers.insert(a.id.clone());
-        }
-        if total_n_b == &1 && !deleted_primers.contains(a.id.as_str()) {
-            deleted_primers.insert(b.id.clone());
+    loop {
+        let worst = conflicts
+            .iter()
+            .filter(|(p, _)| !deleted_primers.contains(*p))
+            .map(|(p, neighbors)| {
+                let active = neighbors
+                    .iter()
+                    .filter(|n| !deleted_primers.contains(*n))
+                    .count();
+                (p.clone(), active)
+            })
+            .filter(|(_, count)| *count > 0)
+            .max_by(|(p1, c1), (p2, c2)| c1.cmp(c2).then(p1.cmp(p2)));
+
+        match worst {
+            Some((primer, _)) => {
+                log::debug!("Removing primer with most dimer conflicts: {}", primer);
+                deleted_primers.insert(primer);
+            }
+            None => break,
         }
     }
-    log::debug!("Will delete primers: {:?}", deleted_primers);
+    log::debug!("Deleted primers: {:?}", deleted_primers);
     let good_delta_g_fwd_primers: Vec<KmerStat> = match program_config.keep_all {
         false => candidate_primers_fwd
             .iter()
@@ -676,7 +807,14 @@ fn main() -> io::Result<()> {
         );
     }
 
-    // 5. Output the primers
+    // 5. Coverage report
+    print_coverage_report(
+        &good_delta_g_fwd_primers,
+        &good_delta_g_rev_primers,
+        &segment_manager,
+    );
+
+    // 6. Output the primers
     log::info!("Outputting primers...");
     let mut writer = csv::Writer::from_path(output_file)?;
     writer.write_record(["direction", "name", "primers", "gc", "avg", "std", "tm"])?;
@@ -1064,7 +1202,15 @@ mod tests {
             ],
         };
 
-        let result = find_most_freq_kmer(&manager.segments, 0, HashSet::new());
+        let kmer_to_segments = make_kmer_segments_windows_mapping(&manager.segments);
+        let partition_coverage = HashMap::new();
+        let result = find_most_freq_kmer(
+            &manager.segments,
+            0,
+            &HashSet::new(),
+            &kmer_to_segments,
+            &partition_coverage,
+        );
         assert!(result.is_some());
         let kmer_freq = result.unwrap();
         assert_eq!(kmer_freq.kmer.word, "ACT");

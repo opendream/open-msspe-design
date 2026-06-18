@@ -1,7 +1,6 @@
 pub const KMER_SIZE: usize = 13;
 pub const WINDOW_SIZE: usize = 500;
 pub const OVERLAP_SIZE: usize = 250;
-pub const MAX_MISMATCH_SEGMENTS: usize = 1;
 pub const MAX_ITERATIONS: usize = 1000;
 pub const SEARCH_WINDOWS_SIZE: usize = 50;
 // Monovalent cation concentration (mM)

@@ -1,6 +1,6 @@
 pub(crate) use crate::constants::{
     ANNEALING_TEMP, DEFAULT_NTTHAL_PATH, DEFAULT_PRIMER3_PATH, DELTA_G_THRESHOLD, DNA_CONC,
-    DNTP_CONC, DV_CONC, KMER_SIZE, MAX_ITERATIONS, MAX_MISMATCH_SEGMENTS, MV_CONC, OVERLAP_SIZE,
+    DNTP_CONC, DV_CONC, KMER_SIZE, MAX_ITERATIONS, MV_CONC, OVERLAP_SIZE,
     PRIMER_MAX_HAIRPIN_TH, PRIMER_MAX_SELF_ANY_TH, PRIMER_MAX_SELF_END_TH, PRIMER_MAX_TM,
     PRIMER_MIN_TM, SEARCH_WINDOWS_SIZE, WINDOW_SIZE,
 };
@@ -25,8 +25,15 @@ pub struct Args {
 
     #[arg(long, env = "OVERLAP_SIZE", default_value_t = OVERLAP_SIZE)]
     pub overlap_size: usize,
-    #[arg(long, env = "MAX_MISMATCH_SEGMENTS", default_value_t = MAX_MISMATCH_SEGMENTS)]
-    pub max_mismatch_segments: usize,
+    #[arg(
+        long,
+        env = "MAX_MISMATCH_SEGMENTS",
+        help = "Stop when k-mer frequency drops below this value. \
+                Defaults to max(1, min(10, num_sequences / 50)), \
+                matching the paper's guidance of n=1 for small datasets \
+                up to n=10 for thousands of genomes."
+    )]
+    pub max_mismatch_segments: Option<usize>,
     #[arg(long, env = "MAX_ITERATIONS", default_value_t = MAX_ITERATIONS)]
     pub max_iterations: usize,
     #[arg(long, env = "SEARCH_WINDOWS_SIZE", default_value_t = SEARCH_WINDOWS_SIZE)]

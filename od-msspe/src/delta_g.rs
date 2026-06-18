@@ -172,6 +172,7 @@ mod tests {
             check_hairpin: false,
             tm_stddev: 2.0,
             disable_tm_stddev: false,
+            disable_min_max_tm: false,
             do_align: false,
             primer_config: PrimerConfig {
                 kmer_size: 13,

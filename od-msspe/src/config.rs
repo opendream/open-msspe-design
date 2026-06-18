@@ -121,6 +121,18 @@ pub struct Args {
     #[arg(
         group = "flag",
         long,
+        env = "DISABLE_MIN_MAX_TM",
+        default_value = "false",
+        value_parser = ["true", "false"],
+        help = "\
+            Turns off the absolute min-tm/max-tm range filter. Use if you want primers \
+            outside the default 30-60°C window."
+    )]
+    pub disable_min_max_tm: String,
+
+    #[arg(
+        group = "flag",
+        long,
         env = "DO_ALIGN",
         default_value = "true",
         value_parser = ["true", "false"],
@@ -160,6 +172,7 @@ pub struct ProgramConfig {
     pub check_hairpin: bool,
     pub tm_stddev: f32,
     pub disable_tm_stddev: bool,
+    pub disable_min_max_tm: bool,
     pub do_align: bool,
 
     pub(crate) primer_config: PrimerConfig,

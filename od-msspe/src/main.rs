@@ -448,14 +448,14 @@ fn filter_kmers(stats: Vec<KmerStat>, program_config: ProgramConfig) -> Vec<Kmer
     stats
         .iter()
         .filter(|kmer_stat| {
-            let pass_self_any = !program_config.check_hairpin
+            let pass_self_any = !program_config.check_self_dimers
                 || (kmer_stat.self_any_th < primer_config.max_self_dimer_any_tm);
-            let pass_self_end = !program_config.check_hairpin
+            let pass_self_end = !program_config.check_self_dimers
                 || (kmer_stat.self_end_th < primer_config.max_self_dimer_end_tm);
             let pass_hairpin = !program_config.check_hairpin
                 || (kmer_stat.hairpin_th < primer_config.max_hairpin_tm);
-            let pass_min_max_tm =
-                kmer_stat.tm > primer_config.min_tm && kmer_stat.tm < primer_config.max_tm;
+            let pass_min_max_tm = program_config.disable_min_max_tm
+                || (kmer_stat.tm > primer_config.min_tm && kmer_stat.tm < primer_config.max_tm);
             let pass_tm_stddev = program_config.disable_tm_stddev || kmer_stat.tm_ok;
 
             pass_self_any
@@ -517,6 +517,7 @@ fn main() -> io::Result<()> {
         check_hairpin: args.check_hairpin.as_str() == "true",
         tm_stddev: args.tm_stddev,
         disable_tm_stddev: args.disable_tm_stddev.as_str() == "true",
+        disable_min_max_tm: args.disable_min_max_tm.as_str() == "true",
         do_align: args.do_align.as_str() == "true",
 
         primer_config: primer_config.clone(),

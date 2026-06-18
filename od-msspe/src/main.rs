@@ -558,13 +558,12 @@ fn print_coverage_report(
         .values()
         .map(|(c, t)| *c as f32 / *t as f32 * 100.0)
         .collect();
-    let mean_cov = seq_coverages.iter().sum::<f32>() / seq_coverages.len() as f32;
     let min_cov = seq_coverages.iter().cloned().fold(f32::INFINITY, f32::min);
     let max_cov = seq_coverages
         .iter()
         .cloned()
         .fold(f32::NEG_INFINITY, f32::max);
-    let fully_covered_seqs = seq_stats.values().filter(|(c, t)| c == t).count();
+    let well_covered = seq_coverages.iter().filter(|&&c| c >= 80.0).count();
 
     let mut uncovered_partitions: Vec<u16> = partition_stats
         .iter()
@@ -581,12 +580,11 @@ fn print_coverage_report(
         100.0 * covered.len() as f32 / total as f32
     );
     println!(
-        "  Sequences: mean {:.1}% covered (min {:.1}%, max {:.1}%); {}/{} fully covered",
-        mean_cov,
+        "  Sequences: {}/{} at ≥80% coverage (min {:.1}%, max {:.1}%)",
+        well_covered,
+        seq_stats.len(),
         min_cov,
         max_cov,
-        fully_covered_seqs,
-        seq_stats.len()
     );
     if uncovered_partitions.is_empty() {
         println!("  All partitions have primer coverage");

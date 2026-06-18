@@ -106,6 +106,7 @@ The following arguments control various aspects of the primer design process:
 - `--check-self-dimer`: Enable self-dimer checking for individual primers.
 - `--check-hairpin`: Enable hairpin structure checking for individual primers.
 - `--disable-tm-stddev`: Turns off tm-stddev config. Use if you do not want strictly similar tm values across all primers.
+- `--disable-min-max-tm`: Turns off the absolute min-tm/max-tm range filter. Use if you want primers outside the default 30–60°C window.
 - `--do-align`: Perform MAFFT multiple sequence alignment if true. Set to false if sequence already aligned.
 
 ### Example

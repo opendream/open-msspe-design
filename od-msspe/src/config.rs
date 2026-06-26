@@ -63,7 +63,6 @@ pub struct Args {
 
     // logic based config
     #[arg(
-        group = "flag",
         long,
         env = "KEEP_ALL",
         default_value = "false",
@@ -73,7 +72,6 @@ pub struct Args {
     pub keep_all: String,
 
     #[arg(
-        group = "flag",
         long,
         env = "CHECK_CROSS_DIMERS",
         default_value = "true",
@@ -85,7 +83,6 @@ pub struct Args {
     pub check_cross_dimers: String,
 
     #[arg(
-        group = "flag",
         long,
         env = "CHECK_SELF_DIMERS",
         default_value = "true",
@@ -95,7 +92,6 @@ pub struct Args {
     pub check_self_dimers: String,
 
     #[arg(
-        group = "flag",
         long,
         env = "CHECK_HAIRPIN",
         default_value = "true",
@@ -105,7 +101,6 @@ pub struct Args {
     pub check_hairpin: String,
 
     #[arg(
-        group = "flag",
         long,
         env = "TM_STDDEV",
         default_value_t = 2.0,
@@ -114,7 +109,6 @@ pub struct Args {
     pub tm_stddev: f32,
 
     #[arg(
-        group = "flag",
         long,
         env = "DISABLE_TM_STDDEV",
         default_value = "false",
@@ -126,7 +120,6 @@ pub struct Args {
     pub disable_tm_stddev: String,
 
     #[arg(
-        group = "flag",
         long,
         env = "DISABLE_MIN_MAX_TM",
         default_value = "false",
@@ -138,7 +131,6 @@ pub struct Args {
     pub disable_min_max_tm: String,
 
     #[arg(
-        group = "flag",
         long,
         env = "DO_ALIGN",
         default_value = "true",
